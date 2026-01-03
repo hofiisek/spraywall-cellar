@@ -43,11 +43,12 @@ function renderHTML(): void {
     <div class="flex h-screen bg-gray-900 text-white">
       <!-- Sidebar -->
       <div class="w-80 bg-gray-800 p-4 flex flex-col overflow-y-auto">
-        <h1 class="text-2xl font-bold mb-6">Spraywall Tracker</h1>
+        <h1 class="text-2xl font-bold mb-1">The Spraywall Cellar</h1>
+        <p class="text-sm text-gray-400 mb-6">Set boulders. Train underground.</p>
 
         <!-- Current Boulder Form -->
         <div class="mb-6 p-4 bg-gray-700 rounded-lg">
-          <h2 class="text-lg font-semibold mb-3">Create Boulder</h2>
+          <h2 class="text-lg font-semibold mb-3">Set a boulder</h2>
           <input
             type="text"
             id="boulder-name"
@@ -57,7 +58,7 @@ function renderHTML(): void {
           <input
             type="text"
             id="boulder-grade"
-            placeholder="Grade (optional)"
+            placeholder="Grade"
             class="w-full px-3 py-2 mb-3 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div class="grid grid-cols-2 gap-2 mb-3">
@@ -74,12 +75,10 @@ function renderHTML(): void {
               Top
             </button>
           </div>
-          <div id="current-holds-info" class="text-sm text-gray-300 mb-3">
-            Holds: <span id="holds-count">0</span>
-          </div>
+          <hr class="my-3 border-gray-600" />
           <div class="flex gap-2">
             <button id="btn-save" class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded font-medium">
-              Save Boulder
+              Save!
             </button>
             <button id="btn-clear" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded font-medium">
               Clear
@@ -90,7 +89,7 @@ function renderHTML(): void {
         <!-- Boulder List -->
         <div class="flex-1 overflow-y-auto">
           <div class="flex justify-between items-center mb-3">
-            <h2 class="text-lg font-semibold">Saved Boulders</h2>
+            <h2 class="text-lg font-semibold">Your boulders</h2>
             <span class="text-sm text-gray-400" id="boulder-count">0</span>
           </div>
           <div id="boulder-list" class="space-y-2">
@@ -114,12 +113,6 @@ function renderHTML(): void {
 
       <!-- Main Content -->
       <div class="flex-1 flex flex-col">
-        <!-- Instructions -->
-        <div class="bg-gray-800 px-6 py-3 text-sm text-gray-300">
-          <span class="font-medium">Instructions:</span>
-          Select hold type, then click on the wall to add holds. Use mouse wheel to zoom, drag to pan.
-        </div>
-
         <!-- Spraywall Image Container -->
         <div class="flex-1 overflow-hidden bg-gray-950 relative">
           <div id="panzoom-container" class="spraywall-container h-full w-full">
@@ -210,7 +203,7 @@ function addHold(event: MouseEvent, type: 'start' | 'feet-only' | 'middle' | 'to
   // Ensure we have a current boulder
   if (!state.currentBoulder) {
     const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
-    const name = nameInput.value.trim() || `Boulder ${state.boulders.length + 1}`;
+    const name = nameInput.value.trim() || '';
     state.currentBoulder = createNewBoulder(name);
   }
 
@@ -263,8 +256,19 @@ function saveCurrentBoulder(): void {
   const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
   const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
 
-  const name = nameInput.value.trim() || `Boulder ${state.boulders.length + 1}`;
-  const grade = gradeInput.value.trim() || undefined;
+  const name = nameInput.value.trim();
+  if (!name) {
+    alert('Please enter a boulder name.');
+    nameInput.focus();
+    return;
+  }
+
+  const grade = gradeInput.value.trim();
+  if (!grade) {
+    alert('Please enter a grade.');
+    gradeInput.focus();
+    return;
+  }
 
   state.currentBoulder.name = name;
   state.currentBoulder.grade = grade;
