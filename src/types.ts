@@ -40,6 +40,8 @@ export interface AppState {
   currentBoulder: Boulder | null;
   /** ID of the selected boulder for viewing */
   selectedBoulderId: string | null;
+  /** Current app mode */
+  mode: 'set' | 'climb';
 }
 
 /**

@@ -8,6 +8,7 @@ let state: AppState = {
   boulders: [],
   currentBoulder: null,
   selectedBoulderId: null,
+  mode: 'set',
 };
 
 let panzoomInstance: PanzoomObject | null = null;
@@ -44,9 +45,20 @@ function renderHTML(): void {
       <!-- Sidebar -->
       <div class="w-80 bg-gray-800 p-4 flex flex-col overflow-y-auto">
         <h1 class="text-2xl font-bold mb-1">The Spraywall Cellar</h1>
-        <p class="text-sm text-gray-400 mb-6">Set boulders. Train underground.</p>
+        <p class="text-sm text-gray-400 mb-4">Set boulders. Train underground.</p>
+
+        <!-- Mode Switcher -->
+        <div class="flex gap-2 mb-6 p-1 bg-gray-700 rounded-lg">
+          <button id="mode-set" class="flex-1 px-3 py-2 rounded font-medium transition-colors">
+            Set boulders
+          </button>
+          <button id="mode-climb" class="flex-1 px-3 py-2 rounded font-medium transition-colors">
+            Climb boulders
+          </button>
+        </div>
 
         <!-- Current Boulder Form -->
+        <div id="set-mode-content">
         <div class="mb-6 p-4 bg-gray-700 rounded-lg">
           <h2 class="text-lg font-semibold mb-3">Set a boulder</h2>
           <input
@@ -85,9 +97,10 @@ function renderHTML(): void {
             </button>
           </div>
         </div>
+        </div>
 
         <!-- Boulder List -->
-        <div class="flex-1 overflow-y-auto">
+        <div id="climb-mode-content" class="flex-1 overflow-y-auto">
           <div class="flex justify-between items-center mb-3">
             <h2 class="text-lg font-semibold">Your boulders</h2>
             <span class="text-sm text-gray-400" id="boulder-count">0</span>
@@ -226,6 +239,38 @@ function removeHold(holdId: string): void {
 
   state.currentBoulder.holds = state.currentBoulder.holds.filter(h => h.id !== holdId);
   renderHolds();
+}
+
+/**
+ * Update mode UI
+ */
+function updateModeUI(): void {
+  const setModeBtn = document.querySelector('#mode-set') as HTMLButtonElement;
+  const climbModeBtn = document.querySelector('#mode-climb') as HTMLButtonElement;
+  const setModeContent = document.querySelector('#set-mode-content') as HTMLElement;
+  const climbModeContent = document.querySelector('#climb-mode-content') as HTMLElement;
+
+  if (!setModeBtn || !climbModeBtn || !setModeContent || !climbModeContent) return;
+
+  if (state.mode === 'set') {
+    setModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors bg-purple-600 text-white';
+    climbModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors text-gray-300 hover:text-white';
+    setModeContent.style.display = 'block';
+    climbModeContent.style.display = 'none';
+  } else {
+    setModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors text-gray-300 hover:text-white';
+    climbModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors bg-purple-600 text-white';
+    setModeContent.style.display = 'none';
+    climbModeContent.style.display = 'block';
+  }
+}
+
+/**
+ * Switch mode
+ */
+function switchMode(mode: 'set' | 'climb'): void {
+  state.mode = mode;
+  updateModeUI();
 }
 
 /**
@@ -407,6 +452,15 @@ function deleteBoulder(boulderId: string): void {
 function setupEventListeners(): void {
   let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
 
+  // Mode switcher buttons
+  document.querySelector('#mode-set')?.addEventListener('click', () => {
+    switchMode('set');
+  });
+
+  document.querySelector('#mode-climb')?.addEventListener('click', () => {
+    switchMode('climb');
+  });
+
   // Hold type buttons
   document.querySelector('#btn-start')?.addEventListener('click', () => {
     currentHoldType = currentHoldType === 'start' ? null : 'start';
@@ -508,6 +562,9 @@ function init(): void {
 
   // Set up event listeners
   setupEventListeners();
+
+  // Initialize mode UI
+  updateModeUI();
 }
 
 // Start the app when DOM is ready
