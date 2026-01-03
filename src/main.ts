@@ -170,6 +170,13 @@ function initializePanzoom(): void {
 }
 
 /**
+ * Get panzoom instance (for event listeners)
+ */
+function getPanzoomInstance(): PanzoomObject | null {
+  return panzoomInstance;
+}
+
+/**
  * Render holds on the image
  */
 function renderHolds(): void {
@@ -451,6 +458,9 @@ function deleteBoulder(boulderId: string): void {
  */
 function setupEventListeners(): void {
   let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
+  let panStartX = 0;
+  let panStartY = 0;
+  let hasPanned = false;
 
   // Mode switcher buttons
   document.querySelector('#mode-set')?.addEventListener('click', () => {
@@ -498,12 +508,43 @@ function setupEventListeners(): void {
     if (currentHoldType === 'top') topBtn?.classList.add('ring-2', 'ring-white');
   }
 
+  // Listen to panzoom events to detect actual panning
+  const container = document.querySelector('#panzoom-container');
+
+  container?.addEventListener('panzoomstart', (event: any) => {
+    const panzoom = getPanzoomInstance();
+    if (panzoom) {
+      const pan = panzoom.getPan();
+      panStartX = pan.x;
+      panStartY = pan.y;
+      hasPanned = false;
+    }
+  });
+
+  container?.addEventListener('panzoomchange', (event: any) => {
+    const panzoom = getPanzoomInstance();
+    if (panzoom) {
+      const pan = panzoom.getPan();
+      // If pan position changed by more than 2 pixels, it's actual panning
+      if (Math.abs(pan.x - panStartX) > 2 || Math.abs(pan.y - panStartY) > 2) {
+        hasPanned = true;
+      }
+    }
+  });
+
+  container?.addEventListener('panzoomend', () => {
+    // Reset after a short delay
+    setTimeout(() => {
+      hasPanned = false;
+    }, 100);
+  });
+
   // Click on image to add hold
   const img = document.querySelector('#spraywall-img');
   img?.addEventListener('click', (event) => {
-    if (currentHoldType) {
-      addHold(event as MouseEvent, currentHoldType);
-    }
+    if (!currentHoldType) return;
+    if (hasPanned) return;
+    addHold(event as MouseEvent, currentHoldType);
   });
 
   // Save boulder button
