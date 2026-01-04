@@ -45,7 +45,7 @@ function renderHTML(): void {
       <!-- Sidebar -->
       <div class="w-80 bg-gray-800 p-4 flex flex-col overflow-y-auto">
         <h1 class="text-2xl font-bold mb-1">The Spraywall Cellar</h1>
-        <p class="text-sm text-gray-400 mb-4">Set boulders. Train underground.</p>
+        <p class="text-sm text-gray-400 mb-4">Set boulders. Chalk the fuck up. Send it.</p>
 
         <!-- Mode Switcher -->
         <div class="flex gap-2 mb-6 p-1 bg-gray-700 rounded-lg">
@@ -53,14 +53,13 @@ function renderHTML(): void {
             Set boulders
           </button>
           <button id="mode-climb" class="flex-1 px-3 py-2 rounded font-medium transition-colors">
-            Climb boulders
+            Send it!!
           </button>
         </div>
 
         <!-- Current Boulder Form -->
         <div id="set-mode-content">
         <div class="mb-6 p-4 bg-gray-700 rounded-lg">
-          <h2 class="text-lg font-semibold mb-3">Set a boulder</h2>
           <input
             type="text"
             id="boulder-name"
