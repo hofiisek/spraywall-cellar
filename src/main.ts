@@ -209,7 +209,26 @@ function renderHolds(): void {
 }
 
 /**
- * Add a hold at the clicked position
+ * Check if click is near an existing hold
+ */
+function findHoldAtPosition(x: number, y: number, tolerance: number = 2): Hold | null {
+  if (!state.currentBoulder) return null;
+
+  for (const hold of state.currentBoulder.holds) {
+    const dx = Math.abs(hold.x - x);
+    const dy = Math.abs(hold.y - y);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < tolerance) {
+      return hold;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Add a hold at the clicked position, or remove if clicking on existing hold
  */
 function addHold(event: MouseEvent, type: 'start' | 'feet-only' | 'middle' | 'top'): void {
   const img = document.querySelector('#spraywall-img') as HTMLImageElement;
@@ -219,6 +238,14 @@ function addHold(event: MouseEvent, type: 'start' | 'feet-only' | 'middle' | 'to
   const imgRect = img.getBoundingClientRect();
   const x = ((event.clientX - imgRect.left) / imgRect.width) * 100;
   const y = ((event.clientY - imgRect.top) / imgRect.height) * 100;
+
+  // Check if clicking on an existing hold to remove it
+  // Tolerance of 1% - about 1/3 of the circle radius for precise clicking
+  const existingHold = findHoldAtPosition(x, y, 1);
+  if (existingHold) {
+    removeHold(existingHold.id);
+    return;
+  }
 
   // Ensure we have a current boulder
   if (!state.currentBoulder) {

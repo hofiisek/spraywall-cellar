@@ -7,7 +7,7 @@
   @apply w-8 h-8 rounded-full border-4 shadow-lg cursor-pointer;
   position: absolute;
   transform: translate(-50%, -50%);
-  pointer-events: auto;
+  pointer-events: none;
   background: transparent;
 }
 
