@@ -125,22 +125,25 @@ function renderHTML(): void {
       </div>
 
       <!-- Main Content -->
-      <div class="flex-1 flex flex-col">
+      <div class="flex-1 bg-gray-950 p-3">
+        <!-- Frame -->
+        <div class="h-full border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden relative" style="box-shadow: inset 0 0 20px rgba(0,0,0,0.5);">
         <!-- Spraywall Image Container -->
-        <div class="flex-1 overflow-hidden bg-gray-950 relative">
-          <div id="panzoom-container" class="spraywall-container h-full w-full">
+          <div id="panzoom-container" class="spraywall-container h-full w-full flex items-center justify-center">
             <div style="position: relative; display: inline-block;">
               <img
                 src="/spraywall.jpg"
                 alt="Spraywall"
                 class="spraywall-image"
                 id="spraywall-img"
+                style="display: block;"
               />
               <div id="holds-overlay" class="absolute top-0 left-0 pointer-events-none" style="width: 100%; height: 100%;">
                 <!-- Hold markers will be inserted here -->
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -152,22 +155,50 @@ function renderHTML(): void {
  */
 function initializePanzoom(): void {
   const container = document.querySelector('#panzoom-container') as HTMLElement;
-  if (!container) return;
+  const img = document.querySelector('#spraywall-img') as HTMLImageElement;
+  if (!container || !img) return;
 
-  panzoomInstance = Panzoom(container, {
-    maxScale: 5,
-    minScale: 0.5,
-    cursor: 'grab',
-    canvas: true,
-    step: 0.1, // Smaller steps for smoother, less aggressive zooming
-  });
+  // Wait for image to load to calculate proper min scale
+  const initPanzoom = () => {
+    // Get the frame element (parent of the panzoom container)
+    const frame = container.parentElement!;
+    const frameWidth = frame.clientWidth;
+    const frameHeight = frame.clientHeight;
+    const imgWidth = img.naturalWidth;
+    const imgHeight = img.naturalHeight;
 
-  // Enable zooming with mouse wheel
-  const parent = container.parentElement!;
-  parent.addEventListener('wheel', (event) => {
-    if (!panzoomInstance) return;
-    panzoomInstance.zoomWithWheel(event, { step: 0.1 });
-  });
+    // Calculate scale to fit and fill the frame
+    const scaleX = frameWidth / imgWidth;
+    const scaleY = frameHeight / imgHeight;
+    const fitScale = Math.min(scaleX, scaleY); // Fits entirely in frame
+    const fillScale = Math.max(scaleX, scaleY); // Fills frame completely
+
+    const startScale = fillScale * 3; // Start at 3x fill scale to make image bigger
+
+    panzoomInstance = Panzoom(container, {
+      maxScale: 5,
+      minScale: fitScale * 0.9, // Allow zooming out slightly
+      cursor: 'grab',
+      canvas: true,
+      step: 0.1, // Smaller steps for smoother, less aggressive zooming
+    });
+
+    // Set initial zoom and center it
+    panzoomInstance.zoom(startScale, { animate: false });
+    panzoomInstance.pan(0, 0, { animate: false });
+
+    // Enable zooming with mouse wheel
+    frame.addEventListener('wheel', (event) => {
+      if (!panzoomInstance) return;
+      panzoomInstance.zoomWithWheel(event, { step: 0.1 });
+    });
+  };
+
+  if (img.complete) {
+    initPanzoom();
+  } else {
+    img.addEventListener('load', initPanzoom);
+  }
 }
 
 /**
