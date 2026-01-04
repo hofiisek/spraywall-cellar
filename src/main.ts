@@ -159,13 +159,14 @@ function initializePanzoom(): void {
     minScale: 0.5,
     cursor: 'grab',
     canvas: true,
+    step: 0.1, // Smaller steps for smoother, less aggressive zooming
   });
 
   // Enable zooming with mouse wheel
   const parent = container.parentElement!;
   parent.addEventListener('wheel', (event) => {
     if (!panzoomInstance) return;
-    panzoomInstance.zoomWithWheel(event);
+    panzoomInstance.zoomWithWheel(event, { step: 0.1 });
   });
 }
 
