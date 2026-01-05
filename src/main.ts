@@ -1,9 +1,16 @@
+/**
+ * The Spraywall Cellar
+ * A spraywall boulder tracking application
+ */
+
 import './styles/main.css';
 import Panzoom, { PanzoomObject } from '@panzoom/panzoom';
 import type { AppState, Boulder, Hold } from './types';
 import { loadBoulders, saveBoulders, exportBoulders, importBoulders } from './storage';
 
-// Application state
+// ============================================================================
+// State
+// ============================================================================
 let state: AppState = {
   boulders: [],
   currentBoulder: null,
@@ -12,6 +19,10 @@ let state: AppState = {
 };
 
 let panzoomInstance: PanzoomObject | null = null;
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
 /**
  * Generate a unique ID
@@ -34,6 +45,10 @@ function createNewBoulder(name: string, grade?: string): Boulder {
     updatedAt: now,
   };
 }
+
+// ============================================================================
+// HTML Rendering
+// ============================================================================
 
 /**
  * Render the HTML structure
@@ -149,6 +164,10 @@ function renderHTML(): void {
   `;
 }
 
+// ============================================================================
+// Panzoom & Image Handling
+// ============================================================================
+
 /**
  * Initialize panzoom on the spraywall image
  */
@@ -207,6 +226,10 @@ function getPanzoomInstance(): PanzoomObject | null {
   return panzoomInstance;
 }
 
+// ============================================================================
+// Hold Management
+// ============================================================================
+
 /**
  * Render holds on the image
  */
@@ -236,7 +259,6 @@ function renderHolds(): void {
     overlay.appendChild(marker);
   });
 
-  updateHoldsCount();
 }
 
 /**
@@ -306,6 +328,10 @@ function removeHold(holdId: string): void {
   renderHolds();
 }
 
+// ============================================================================
+// UI Mode Management
+// ============================================================================
+
 /**
  * Update mode UI
  */
@@ -338,16 +364,9 @@ function switchMode(mode: 'set' | 'climb'): void {
   updateModeUI();
 }
 
-/**
- * Update holds count display
- */
-function updateHoldsCount(): void {
-  const count = state.currentBoulder?.holds.length || 0;
-  const countEl = document.querySelector('#holds-count');
-  if (countEl) {
-    countEl.textContent = count.toString();
-  }
-}
+// ============================================================================
+// Boulder Management
+// ============================================================================
 
 /**
  * Save the current boulder
@@ -511,6 +530,10 @@ function deleteBoulder(boulderId: string): void {
   renderHolds();
 }
 
+// ============================================================================
+// Event Listeners
+// ============================================================================
+
 /**
  * Set up event listeners
  */
@@ -569,7 +592,7 @@ function setupEventListeners(): void {
   // Listen to panzoom events to detect actual panning
   const container = document.querySelector('#panzoom-container');
 
-  container?.addEventListener('panzoomstart', (event: any) => {
+  container?.addEventListener('panzoomstart', () => {
     const panzoom = getPanzoomInstance();
     if (panzoom) {
       const pan = panzoom.getPan();
@@ -579,7 +602,7 @@ function setupEventListeners(): void {
     }
   });
 
-  container?.addEventListener('panzoomchange', (event: any) => {
+  container?.addEventListener('panzoomchange', () => {
     const panzoom = getPanzoomInstance();
     if (panzoom) {
       const pan = panzoom.getPan();
@@ -644,6 +667,10 @@ function setupEventListeners(): void {
     importInput.value = '';
   });
 }
+
+// ============================================================================
+// Application Initialization
+// ============================================================================
 
 /**
  * Initialize the application
