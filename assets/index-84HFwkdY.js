@@ -89,7 +89,7 @@
           <div id="panzoom-container" class="spraywall-container h-full w-full flex items-center justify-center">
             <div style="position: relative; display: inline-block;">
               <img
-                src="/spraywall.jpg"
+                src="./spraywall.jpg"
                 alt="Spraywall"
                 class="spraywall-image"
                 id="spraywall-img"
