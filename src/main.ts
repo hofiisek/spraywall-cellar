@@ -56,18 +56,18 @@ function createNewBoulder(name: string, grade?: string): Boulder {
 function renderHTML(): void {
   const app = document.querySelector('#app')!;
   app.innerHTML = `
-    <div class="flex h-screen bg-gray-900 text-white">
+    <div class="flex flex-col md:flex-row h-screen bg-gray-900 text-white">
       <!-- Sidebar -->
-      <div class="w-80 bg-gray-800 p-4 flex flex-col overflow-y-auto">
-        <h1 class="text-2xl font-bold mb-1">The Spraywall Cellar</h1>
-        <p class="text-sm text-gray-400 mb-4">Set boulders. Chalk the fuck up. Send it.</p>
+      <div class="w-full md:w-80 bg-gray-800 p-4 flex flex-col overflow-y-auto max-h-[40vh] md:max-h-none">
+        <h1 class="text-xl md:text-2xl font-bold mb-1">The Spraywall Cellar</h1>
+        <p class="text-xs md:text-sm text-gray-400 mb-3 md:mb-4">Set boulders. Chalk the fuck up. Send it.</p>
 
         <!-- Mode Switcher -->
-        <div class="flex gap-2 mb-6 p-1 bg-gray-700 rounded-lg">
-          <button id="mode-set" class="flex-1 px-3 py-2 rounded font-medium transition-colors">
+        <div class="flex gap-2 mb-4 md:mb-6 p-1 bg-gray-700 rounded-lg">
+          <button id="mode-set" class="flex-1 px-3 py-3 md:py-2 rounded font-medium transition-colors text-sm md:text-base">
             Set boulders
           </button>
-          <button id="mode-climb" class="flex-1 px-3 py-2 rounded font-medium transition-colors">
+          <button id="mode-climb" class="flex-1 px-3 py-3 md:py-2 rounded font-medium transition-colors text-sm md:text-base">
             Send it!!
           </button>
         </div>
@@ -88,25 +88,25 @@ function renderHTML(): void {
             class="w-full px-3 py-2 mb-3 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div class="grid grid-cols-2 gap-2 mb-3">
-            <button id="btn-start" class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded font-medium">
+            <button id="btn-start" class="px-3 py-3 md:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 rounded font-medium text-sm md:text-base">
               Start
             </button>
-            <button id="btn-feet-only" class="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 rounded font-medium">
+            <button id="btn-feet-only" class="px-3 py-3 md:py-2 bg-yellow-600 hover:bg-yellow-700 active:bg-yellow-800 rounded font-medium text-sm md:text-base">
               Feet Only
             </button>
-            <button id="btn-middle" class="px-3 py-2 bg-gray-300 hover:bg-gray-400 text-gray-900 rounded font-medium">
+            <button id="btn-middle" class="px-3 py-3 md:py-2 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-900 rounded font-medium text-sm md:text-base">
               Middle
             </button>
-            <button id="btn-top" class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded font-medium">
+            <button id="btn-top" class="px-3 py-3 md:py-2 bg-red-600 hover:bg-red-700 active:bg-red-800 rounded font-medium text-sm md:text-base">
               Top
             </button>
           </div>
           <hr class="my-3 border-gray-600" />
           <div class="flex gap-2">
-            <button id="btn-save" class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded font-medium">
+            <button id="btn-save" class="flex-1 px-4 py-3 md:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded font-medium text-sm md:text-base">
               Save!
             </button>
-            <button id="btn-clear" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded font-medium">
+            <button id="btn-clear" class="flex-1 px-4 py-3 md:py-2 bg-gray-600 hover:bg-gray-500 active:bg-gray-700 rounded font-medium text-sm md:text-base">
               Clear
             </button>
           </div>
@@ -125,12 +125,12 @@ function renderHTML(): void {
         </div>
 
         <!-- Export/Import -->
-        <div class="mt-6 pt-4 border-t border-gray-700">
+        <div class="mt-4 md:mt-6 pt-3 md:pt-4 border-t border-gray-700">
           <div class="flex gap-2">
-            <button id="btn-export" class="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded font-medium">
+            <button id="btn-export" class="flex-1 px-4 py-3 md:py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded font-medium text-sm md:text-base">
               Export JSON
             </button>
-            <label class="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded font-medium text-center cursor-pointer">
+            <label class="flex-1 px-4 py-3 md:py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded font-medium text-center cursor-pointer text-sm md:text-base">
               Import JSON
               <input type="file" id="input-import" accept=".json" class="hidden" />
             </label>
@@ -139,7 +139,7 @@ function renderHTML(): void {
       </div>
 
       <!-- Main Content -->
-      <div class="flex-1 bg-gray-950 p-3">
+      <div class="flex-1 bg-gray-950 p-2 md:p-3">
         <!-- Frame -->
         <div class="h-full border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden relative" style="box-shadow: inset 0 0 20px rgba(0,0,0,0.5);">
         <!-- Spraywall Image Container -->
@@ -453,21 +453,21 @@ function renderBoulderList(): void {
       const isSelected = state.selectedBoulderId === boulder.id;
       return `
         <div
-          class="p-3 rounded ${isSelected ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'} cursor-pointer"
+          class="p-4 md:p-3 rounded ${isSelected ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600 active:bg-gray-600'} cursor-pointer"
           data-boulder-id="${boulder.id}"
         >
           <div class="flex justify-between items-start">
             <div class="flex-1">
-              <h3 class="font-medium">${boulder.name}</h3>
-              ${boulder.grade ? `<p class="text-sm text-gray-300">${boulder.grade}</p>` : ''}
-              <p class="text-xs text-gray-400 mt-1">${boulder.holds.length} holds</p>
+              <h3 class="font-medium text-base md:text-sm">${boulder.name}</h3>
+              ${boulder.grade ? `<p class="text-sm md:text-sm text-gray-300">${boulder.grade}</p>` : ''}
+              <p class="text-sm md:text-xs text-gray-400 mt-1">${boulder.holds.length} holds</p>
             </div>
             <button
-              class="text-red-400 hover:text-red-300 ml-2"
+              class="text-red-400 hover:text-red-300 active:text-red-200 ml-2 p-2 -m-2"
               data-delete-boulder="${boulder.id}"
               title="Delete boulder"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </button>

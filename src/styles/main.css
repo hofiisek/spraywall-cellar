@@ -4,7 +4,7 @@
 
 /* Custom styles for the spraywall tracker */
 .hold-marker {
-  @apply w-8 h-8 rounded-full border-4 shadow-lg cursor-pointer;
+  @apply w-10 h-10 md:w-8 md:h-8 rounded-full border-4 shadow-lg cursor-pointer;
   position: absolute;
   transform: translate(-50%, -50%);
   pointer-events: none;
