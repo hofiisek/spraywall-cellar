@@ -22,6 +22,8 @@ export interface Boulder {
   name: string;
   /** Difficulty grade (optional) */
   grade?: string;
+  /** Description of the boulder (optional) */
+  description?: string;
   /** Array of holds that make up the boulder */
   holds: Hold[];
   /** Creation timestamp */

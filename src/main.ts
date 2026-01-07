@@ -9,6 +9,12 @@ import type { AppState, Boulder, Hold } from './types';
 import { loadBoulders, saveBoulders, exportBoulders, importBoulders } from './storage';
 
 // ============================================================================
+// Configuration
+// ============================================================================
+// SHA-256 hash of the delete password
+const DELETE_PASSWORD_HASH = '59a6cabc8b017562ccb1f3c9514870b4a677fda5b79788abae3dcea83430cb50';
+
+// ============================================================================
 // State
 // ============================================================================
 let state: AppState = {
@@ -32,14 +38,33 @@ function generateId(): string {
 }
 
 /**
+ * Hash a string using SHA-256
+ */
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Verify password against stored hash
+ */
+async function verifyPassword(password: string): Promise<boolean> {
+  const hash = await sha256(password);
+  return hash === DELETE_PASSWORD_HASH;
+}
+
+/**
  * Create a new boulder
  */
-function createNewBoulder(name: string, grade?: string): Boulder {
+function createNewBoulder(name: string, grade?: string, description?: string): Boulder {
   const now = Date.now();
   return {
     id: generateId(),
     name,
     grade,
+    description,
     holds: [],
     createdAt: now,
     updatedAt: now,
@@ -85,8 +110,14 @@ function renderHTML(): void {
             type="text"
             id="boulder-grade"
             placeholder="Grade"
-            class="w-full px-3 py-2 mb-3 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 mb-2 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <textarea
+            id="boulder-description"
+            placeholder="Description (optional)"
+            rows="2"
+            class="w-full px-3 py-2 mb-3 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+          ></textarea>
           <div class="grid grid-cols-2 gap-2 mb-3">
             <button id="btn-start" class="px-3 py-3 md:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 rounded font-medium text-sm md:text-base">
               Start
@@ -384,6 +415,7 @@ function saveCurrentBoulder(): void {
 
   const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
   const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+  const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
 
   const name = nameInput.value.trim();
   if (!name) {
@@ -399,8 +431,11 @@ function saveCurrentBoulder(): void {
     return;
   }
 
+  const description = descriptionInput.value.trim();
+
   state.currentBoulder.name = name;
   state.currentBoulder.grade = grade;
+  state.currentBoulder.description = description || undefined;
   state.currentBoulder.updatedAt = Date.now();
 
   state.boulders.push(state.currentBoulder);
@@ -410,6 +445,7 @@ function saveCurrentBoulder(): void {
   state.currentBoulder = null;
   nameInput.value = '';
   gradeInput.value = '';
+  descriptionInput.value = '';
 
   renderBoulderList();
   renderHolds();
@@ -460,6 +496,7 @@ function renderBoulderList(): void {
             <div class="flex-1">
               <h3 class="font-medium text-base md:text-sm">${boulder.name}</h3>
               ${boulder.grade ? `<p class="text-sm md:text-sm text-gray-300">${boulder.grade}</p>` : ''}
+              ${boulder.description ? `<p class="text-xs md:text-xs text-gray-400 mt-1 italic">${boulder.description}</p>` : ''}
               <p class="text-sm md:text-xs text-gray-400 mt-1">${boulder.holds.length} holds</p>
             </div>
             <button
@@ -516,7 +553,18 @@ function selectBoulder(boulderId: string): void {
 /**
  * Delete a boulder
  */
-function deleteBoulder(boulderId: string): void {
+async function deleteBoulder(boulderId: string): Promise<void> {
+  const password = prompt('Enter password to delete this boulder:');
+  if (!password) {
+    return; // User cancelled
+  }
+
+  const isValid = await verifyPassword(password);
+  if (!isValid) {
+    alert('Incorrect password. Boulder not deleted.');
+    return;
+  }
+
   if (!confirm('Are you sure you want to delete this boulder?')) {
     return;
   }
