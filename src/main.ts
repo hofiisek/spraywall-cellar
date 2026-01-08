@@ -575,12 +575,21 @@ async function saveCurrentBoulder(): Promise<void> {
  * Clear current boulder
  */
 function clearCurrentBoulder(): void {
+  // Confirm if there's a boulder being edited
+  if (state.currentBoulder && state.currentBoulder.holds.length > 0) {
+    if (!confirm('Are you sure you want to clear this boulder? All unsaved changes will be lost.')) {
+      return;
+    }
+  }
+
   state.currentBoulder = null;
   state.selectedBoulderId = null;
   const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
   const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+  const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
   if (nameInput) nameInput.value = '';
   if (gradeInput) gradeInput.value = '';
+  if (descriptionInput) descriptionInput.value = '';
   renderHolds();
   renderBoulderList();
 }
@@ -619,15 +628,26 @@ function renderBoulderList(): void {
               ${boulder.description ? `<p class="text-xs md:text-xs text-gray-400 mt-1 italic">${boulder.description}</p>` : ''}
               <p class="text-sm md:text-xs text-gray-400 mt-1">${boulder.holds.length} holds</p>
             </div>
-            <button
-              class="text-red-400 hover:text-red-300 active:text-red-200 ml-2 p-2 -m-2"
-              data-delete-boulder="${boulder.id}"
-              title="Delete boulder"
-            >
-              <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
+            <div class="flex flex-col gap-2 ml-2">
+              <button
+                class="text-blue-400 hover:text-blue-300 active:text-blue-200 p-2 -m-2"
+                data-edit-boulder="${boulder.id}"
+                title="Edit boulder"
+              >
+                <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button
+                class="text-red-400 hover:text-red-300 active:text-red-200 p-2 -m-2"
+                data-delete-boulder="${boulder.id}"
+                title="Delete boulder"
+              >
+                <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -639,9 +659,19 @@ function renderBoulderList(): void {
     el.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('[data-delete-boulder]')) return; // Ignore if clicking delete button
+      if (target.closest('[data-edit-boulder]')) return; // Ignore if clicking edit button
 
       const boulderId = (el as HTMLElement).dataset.boulderId!;
       selectBoulder(boulderId);
+    });
+  });
+
+  // Add edit handlers
+  listContainer.querySelectorAll('[data-edit-boulder]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const boulderId = (el as HTMLElement).dataset.editBoulder!;
+      editBoulder(boulderId);
     });
   });
 
@@ -667,6 +697,33 @@ function selectBoulder(boulderId: string): void {
     state.selectedBoulderId = boulderId;
   }
   renderBoulderList();
+  renderHolds();
+}
+
+/**
+ * Edit a boulder
+ */
+function editBoulder(boulderId: string): void {
+  const boulder = state.boulders.find(b => b.id === boulderId);
+  if (!boulder) return;
+
+  // Switch to set mode
+  state.mode = 'set';
+  updateModeUI();
+
+  // Load boulder into current editing state
+  state.currentBoulder = { ...boulder, holds: [...boulder.holds] }; // Deep copy
+
+  // Fill form fields
+  const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
+  const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+  const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
+
+  if (nameInput) nameInput.value = boulder.name;
+  if (gradeInput) gradeInput.value = boulder.grade || '';
+  if (descriptionInput) descriptionInput.value = boulder.description || '';
+
+  // Render holds
   renderHolds();
 }
 
