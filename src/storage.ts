@@ -1,34 +1,80 @@
 import type { Boulder, ExportData } from './types';
+import { db } from './firebase';
+import { collection, getDocs, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
-const STORAGE_KEY = 'spraywall-boulders';
 const STORAGE_VERSION = '1.0.0';
+const BOULDERS_COLLECTION = 'boulders';
 
 /**
- * Save boulders to localStorage
+ * Save a single boulder to Firebase
  */
-export function saveBoulders(boulders: Boulder[]): void {
+export async function saveBoulder(boulder: Boulder): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(boulders));
+    await setDoc(doc(db, BOULDERS_COLLECTION, boulder.id), boulder);
   } catch (error) {
-    console.error('Failed to save boulders to localStorage:', error);
-    throw new Error('Failed to save boulders. Storage might be full.');
+    console.error('Failed to save boulder to Firebase:', error);
+    throw new Error('Failed to save boulder. Check your connection.');
   }
 }
 
 /**
- * Load boulders from localStorage
+ * Save multiple boulders to Firebase
  */
-export function loadBoulders(): Boulder[] {
+export async function saveBoulders(boulders: Boulder[]): Promise<void> {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) {
-      return [];
-    }
-    const boulders = JSON.parse(data);
-    return Array.isArray(boulders) ? boulders : [];
+    const promises = boulders.map(boulder =>
+      setDoc(doc(db, BOULDERS_COLLECTION, boulder.id), boulder)
+    );
+    await Promise.all(promises);
   } catch (error) {
-    console.error('Failed to load boulders from localStorage:', error);
+    console.error('Failed to save boulders to Firebase:', error);
+    throw new Error('Failed to save boulders. Check your connection.');
+  }
+}
+
+/**
+ * Load all boulders from Firebase
+ */
+export async function loadBoulders(): Promise<Boulder[]> {
+  try {
+    const querySnapshot = await getDocs(collection(db, BOULDERS_COLLECTION));
+    const boulders: Boulder[] = [];
+    querySnapshot.forEach((doc) => {
+      boulders.push(doc.data() as Boulder);
+    });
+    return boulders;
+  } catch (error) {
+    console.error('Failed to load boulders from Firebase:', error);
     return [];
+  }
+}
+
+/**
+ * Subscribe to real-time boulder updates
+ */
+export function subscribeToBoulders(callback: (boulders: Boulder[]) => void): () => void {
+  const unsubscribe = onSnapshot(collection(db, BOULDERS_COLLECTION), (snapshot) => {
+    const boulders: Boulder[] = [];
+    snapshot.forEach((doc) => {
+      boulders.push(doc.data() as Boulder);
+    });
+    callback(boulders);
+  }, (error) => {
+    console.error('Error subscribing to boulders:', error);
+  });
+
+  return unsubscribe;
+}
+
+/**
+ * Delete a boulder from Firebase
+ */
+export async function deleteBoulderFromFirebase(boulderId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, BOULDERS_COLLECTION, boulderId));
+  } catch (error) {
+    console.error('Failed to delete boulder from Firebase:', error);
+    throw new Error('Failed to delete boulder. Check your connection.');
   }
 }
 
@@ -87,8 +133,15 @@ export function importBoulders(file: File): Promise<Boulder[]> {
 }
 
 /**
- * Clear all boulders from localStorage
+ * Clear all boulders from Firebase
  */
-export function clearBoulders(): void {
-  localStorage.removeItem(STORAGE_KEY);
+export async function clearBoulders(): Promise<void> {
+  try {
+    const querySnapshot = await getDocs(collection(db, BOULDERS_COLLECTION));
+    const promises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(promises);
+  } catch (error) {
+    console.error('Failed to clear boulders from Firebase:', error);
+    throw new Error('Failed to clear boulders. Check your connection.');
+  }
 }

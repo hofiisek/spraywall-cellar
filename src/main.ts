@@ -6,7 +6,7 @@
 import './styles/main.css';
 import Panzoom, { PanzoomObject } from '@panzoom/panzoom';
 import type { AppState, Boulder, Hold } from './types';
-import { loadBoulders, saveBoulders, exportBoulders, importBoulders } from './storage';
+import { loadBoulders, saveBoulder, saveBoulders, exportBoulders, importBoulders, subscribeToBoulders, deleteBoulderFromFirebase } from './storage';
 
 // ============================================================================
 // Configuration
@@ -402,7 +402,7 @@ function switchMode(mode: 'set' | 'climb'): void {
 /**
  * Save the current boulder
  */
-function saveCurrentBoulder(): void {
+async function saveCurrentBoulder(): Promise<void> {
   if (!state.currentBoulder) {
     alert('No boulder to save. Add some holds first!');
     return;
@@ -435,20 +435,28 @@ function saveCurrentBoulder(): void {
 
   state.currentBoulder.name = name;
   state.currentBoulder.grade = grade;
-  state.currentBoulder.description = description || undefined;
+  if (description) {
+    state.currentBoulder.description = description;
+  } else {
+    delete state.currentBoulder.description;
+  }
   state.currentBoulder.updatedAt = Date.now();
 
-  state.boulders.push(state.currentBoulder);
-  saveBoulders(state.boulders);
+  // Save to Firebase
+  try {
+    await saveBoulder(state.currentBoulder);
 
-  // Clear current boulder
-  state.currentBoulder = null;
-  nameInput.value = '';
-  gradeInput.value = '';
-  descriptionInput.value = '';
+    // Clear current boulder
+    state.currentBoulder = null;
+    nameInput.value = '';
+    gradeInput.value = '';
+    descriptionInput.value = '';
 
-  renderBoulderList();
-  renderHolds();
+    renderHolds();
+  } catch (error) {
+    alert('Failed to save boulder. Please check your connection and try again.');
+    console.error(error);
+  }
 }
 
 /**
@@ -569,13 +577,18 @@ async function deleteBoulder(boulderId: string): Promise<void> {
     return;
   }
 
-  state.boulders = state.boulders.filter(b => b.id !== boulderId);
-  if (state.selectedBoulderId === boulderId) {
-    state.selectedBoulderId = null;
+  // Delete from Firebase
+  try {
+    await deleteBoulderFromFirebase(boulderId);
+
+    if (state.selectedBoulderId === boulderId) {
+      state.selectedBoulderId = null;
+      renderHolds();
+    }
+  } catch (error) {
+    alert('Failed to delete boulder. Please check your connection and try again.');
+    console.error(error);
   }
-  saveBoulders(state.boulders);
-  renderBoulderList();
-  renderHolds();
 }
 
 // ============================================================================
@@ -700,10 +713,8 @@ function setupEventListeners(): void {
     try {
       const importedBoulders = await importBoulders(file);
 
-      if (confirm(`Import ${importedBoulders.length} boulders? This will replace your current data.`)) {
-        state.boulders = importedBoulders;
-        saveBoulders(state.boulders);
-        renderBoulderList();
+      if (confirm(`Import ${importedBoulders.length} boulders? This will add to your current data.`)) {
+        await saveBoulders(importedBoulders);
         alert('Boulders imported successfully!');
       }
     } catch (error) {
@@ -723,13 +734,23 @@ function setupEventListeners(): void {
 /**
  * Initialize the application
  */
-function init(): void {
-  // Load saved boulders
-  state.boulders = loadBoulders();
-
-  // Render UI
+async function init(): Promise<void> {
+  // Render UI first
   renderHTML();
+
+  // Load saved boulders from Firebase
+  state.boulders = await loadBoulders();
   renderBoulderList();
+
+  // Subscribe to real-time updates
+  subscribeToBoulders((boulders) => {
+    state.boulders = boulders;
+    renderBoulderList();
+    // Re-render holds if viewing a boulder that got updated
+    if (state.selectedBoulderId) {
+      renderHolds();
+    }
+  });
 
   // Initialize panzoom
   initializePanzoom();
