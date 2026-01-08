@@ -20,11 +20,11 @@
 }
 
 .hold-marker.middle {
-  border-color: white;
+  border-color: rgb(29 78 216); /* blue-700 - even darker blue */
 }
 
 .hold-marker.top {
-  border-color: rgb(239 68 68); /* red-500 */
+  border-color: rgb(147 51 234); /* purple-600 - more saturated purple */
 }
 
 .spraywall-container {
