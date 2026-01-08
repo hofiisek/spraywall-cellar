@@ -56,6 +56,118 @@ async function verifyPassword(password: string): Promise<boolean> {
 }
 
 /**
+ * Show a password input dialog
+ */
+function showPasswordDialog(message: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: #1f2937;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      max-width: 400px;
+      width: 90%;
+    `;
+
+    dialog.innerHTML = `
+      <h3 style="color: white; margin: 0 0 16px 0; font-size: 18px;">${message}</h3>
+      <input
+        type="password"
+        id="password-input"
+        placeholder="Enter password"
+        style="
+          width: 100%;
+          padding: 8px 12px;
+          background: #374151;
+          border: 1px solid #4b5563;
+          border-radius: 4px;
+          color: white;
+          font-size: 14px;
+          margin-bottom: 16px;
+          box-sizing: border-box;
+        "
+      />
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button
+          id="cancel-btn"
+          style="
+            padding: 8px 16px;
+            background: #4b5563;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+          "
+        >Cancel</button>
+        <button
+          id="ok-btn"
+          style="
+            padding: 8px 16px;
+            background: #7c3aed;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+          "
+        >OK</button>
+      </div>
+    `;
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const input = dialog.querySelector('#password-input') as HTMLInputElement;
+    const okBtn = dialog.querySelector('#ok-btn') as HTMLButtonElement;
+    const cancelBtn = dialog.querySelector('#cancel-btn') as HTMLButtonElement;
+
+    // Focus input
+    setTimeout(() => input.focus(), 100);
+
+    // Handle OK
+    const handleOk = () => {
+      const password = input.value;
+      document.body.removeChild(overlay);
+      resolve(password || null);
+    };
+
+    // Handle Cancel
+    const handleCancel = () => {
+      document.body.removeChild(overlay);
+      resolve(null);
+    };
+
+    okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleOk();
+      } else if (e.key === 'Escape') {
+        handleCancel();
+      }
+    });
+  });
+}
+
+/**
  * Create a new boulder
  */
 function createNewBoulder(name: string, grade?: string, description?: string): Boulder {
@@ -562,7 +674,7 @@ function selectBoulder(boulderId: string): void {
  * Delete a boulder
  */
 async function deleteBoulder(boulderId: string): Promise<void> {
-  const password = prompt('Enter password to delete this boulder:');
+  const password = await showPasswordDialog('Enter password to delete this boulder:');
   if (!password) {
     return; // User cancelled
   }
