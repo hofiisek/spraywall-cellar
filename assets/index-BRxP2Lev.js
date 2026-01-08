@@ -2134,11 +2134,11 @@ This typically indicates that your device does not have a healthy Internet conne
             <button id="btn-feet-only" class="px-3 py-3 md:py-2 bg-yellow-600 hover:bg-yellow-700 active:bg-yellow-800 rounded font-medium text-sm md:text-base">
               Feet Only
             </button>
-            <button id="btn-middle" class="px-3 py-3 md:py-2 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-900 rounded font-medium text-sm md:text-base">
+            <button id="btn-middle" class="px-3 py-3 md:py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded font-medium text-sm md:text-base">
               Middle
             </button>
-            <button id="btn-top" class="px-3 py-3 md:py-2 bg-red-600 hover:bg-red-700 active:bg-red-800 rounded font-medium text-sm md:text-base">
-              Top
+            <button id="btn-top" class="px-3 py-3 md:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded font-medium text-sm md:text-base">
+              Finish
             </button>
           </div>
           <hr class="my-3 border-gray-600" />
