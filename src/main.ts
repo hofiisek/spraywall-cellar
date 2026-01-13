@@ -212,7 +212,7 @@ function renderHTML(): void {
             Set boulders
           </button>
           <button id="mode-climb" class="flex-1 px-3 py-3 md:py-2 rounded font-medium transition-colors text-sm md:text-base">
-            Send it!!
+            Send hard!
           </button>
         </div>
 
