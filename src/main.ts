@@ -6,7 +6,9 @@
 import './styles/main.css';
 import Panzoom, { PanzoomObject } from '@panzoom/panzoom';
 import type { AppState, Boulder, Hold } from './types';
-import { loadBoulders, saveBoulder, saveBoulders, exportBoulders, importBoulders, subscribeToBoulders, deleteBoulderFromFirebase } from './storage';
+import { loadBoulders, saveBoulder, exportBoulders, subscribeToBoulders, deleteBoulderFromFirebase } from './storage';
+import { auth, googleProvider } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
 
 // ============================================================================
 // Configuration
@@ -25,6 +27,8 @@ let state: AppState = {
 };
 
 let panzoomInstance: PanzoomObject | null = null;
+let currentUser: User | null = null;
+let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
 
 // ============================================================================
 // Utility Functions
@@ -196,8 +200,11 @@ function renderHTML(): void {
     <div class="flex flex-col md:flex-row h-screen bg-gray-900 text-white">
       <!-- Sidebar -->
       <div class="w-full md:w-80 bg-gray-800 p-4 flex flex-col overflow-y-auto max-h-[40vh] md:max-h-none">
-        <h1 class="text-xl md:text-2xl font-bold mb-1">The Spraywall Cellar</h1>
-        <p class="text-xs md:text-sm text-gray-400 mb-3 md:mb-4">Set boulders. Chalk the fuck up. Send it.</p>
+        <div class="mb-3">
+          <h1 class="text-xl md:text-2xl font-bold mb-1">The Spraywall Cellar</h1>
+          <p class="text-xs md:text-sm text-gray-400">Set boulders. Chalk the fuck up. Send it.</p>
+        </div>
+        ${currentUser ? `<p class="text-xs text-gray-500 mb-3">Logged in as: ${currentUser.email}</p>` : `<p class="text-xs text-yellow-500 mb-3">⚠️ Login to edit/delete boulders</p>`}
 
         <!-- Mode Switcher -->
         <div class="flex gap-2 mb-4 md:mb-6 p-1 bg-gray-700 rounded-lg">
@@ -241,12 +248,12 @@ function renderHTML(): void {
               Middle
             </button>
             <button id="btn-top" class="px-3 py-3 md:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded font-medium text-sm md:text-base">
-              Finish
+              Top
             </button>
           </div>
           <hr class="my-3 border-gray-600" />
           <div class="flex gap-2">
-            <button id="btn-save" class="flex-1 px-4 py-3 md:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded font-medium text-sm md:text-base">
+            <button id="btn-save" class="flex-1 px-4 py-3 md:py-2 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 rounded font-medium text-sm md:text-base">
               Save!
             </button>
             <button id="btn-clear" class="flex-1 px-4 py-3 md:py-2 bg-gray-600 hover:bg-gray-500 active:bg-gray-700 rounded font-medium text-sm md:text-base">
@@ -260,24 +267,28 @@ function renderHTML(): void {
         <div id="climb-mode-content" class="flex-1 overflow-y-auto">
           <div class="flex justify-between items-center mb-3">
             <h2 class="text-lg font-semibold">Your boulders</h2>
-            <span class="text-sm text-gray-400" id="boulder-count">0</span>
+            <div class="flex items-center gap-2">
+              ${currentUser ? `
+              <button id="btn-export" class="text-indigo-400 hover:text-indigo-300 p-1" title="Export JSON">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </button>
+              ` : ''}
+              <span class="text-sm text-gray-400" id="boulder-count">0</span>
+            </div>
           </div>
           <div id="boulder-list" class="space-y-2">
             <!-- Boulder items will be inserted here -->
           </div>
         </div>
 
-        <!-- Export/Import -->
-        <div class="mt-4 md:mt-6 pt-3 md:pt-4 border-t border-gray-700">
-          <div class="flex gap-2">
-            <button id="btn-export" class="flex-1 px-4 py-3 md:py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded font-medium text-sm md:text-base">
-              Export JSON
-            </button>
-            <label class="flex-1 px-4 py-3 md:py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded font-medium text-center cursor-pointer text-sm md:text-base">
-              Import JSON
-              <input type="file" id="input-import" accept=".json" class="hidden" />
-            </label>
-          </div>
+        <!-- Login/Logout Button -->
+        <div class="mt-3 md:mt-4">
+          ${currentUser
+            ? `<button id="logout-btn" class="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded text-sm">Logout</button>`
+            : `<button id="login-btn" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">Login with Google</button>`
+          }
         </div>
       </div>
 
@@ -503,6 +514,33 @@ function updateModeUI(): void {
  * Switch mode
  */
 function switchMode(mode: 'set' | 'climb'): void {
+  // If switching to climb mode, clear any editing state
+  if (mode === 'climb') {
+    state.currentBoulder = null;
+    state.selectedBoulderId = null;
+
+    // Clear form fields
+    const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
+    const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+    const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
+    if (nameInput) nameInput.value = '';
+    if (gradeInput) gradeInput.value = '';
+    if (descriptionInput) descriptionInput.value = '';
+
+    // Reset hold type selection
+    currentHoldType = null;
+    updateHoldTypeButtons();
+
+    renderHolds();
+  }
+
+  // If switching to set mode, clear selected boulder
+  if (mode === 'set') {
+    state.selectedBoulderId = null;
+    renderHolds();
+    renderBoulderList();
+  }
+
   state.mode = mode;
   updateModeUI();
 }
@@ -564,6 +602,10 @@ async function saveCurrentBoulder(): Promise<void> {
     gradeInput.value = '';
     descriptionInput.value = '';
 
+    // Reset hold type selection
+    currentHoldType = null;
+    updateHoldTypeButtons();
+
     renderHolds();
   } catch (error) {
     alert('Failed to save boulder. Please check your connection and try again.');
@@ -590,6 +632,11 @@ function clearCurrentBoulder(): void {
   if (nameInput) nameInput.value = '';
   if (gradeInput) gradeInput.value = '';
   if (descriptionInput) descriptionInput.value = '';
+
+  // Reset hold type selection
+  currentHoldType = null;
+  updateHoldTypeButtons();
+
   renderHolds();
   renderBoulderList();
 }
@@ -630,18 +677,32 @@ function renderBoulderList(): void {
             </div>
             <div class="flex flex-col gap-2 ml-2">
               <button
-                class="text-blue-400 hover:text-blue-300 active:text-blue-200 p-2 -m-2"
+                class="${boulder.isLocked ? 'text-yellow-400 hover:text-yellow-300' : 'text-gray-400 hover:text-gray-300'} active:text-gray-200 p-2 -m-2"
+                data-toggle-lock="${boulder.id}"
+                title="${boulder.isLocked ? 'Locked' : 'Unlocked'}"
+              >
+                <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  ${boulder.isLocked
+                    ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />'
+                    : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />'
+                  }
+                </svg>
+              </button>
+              <button
+                class="text-blue-400 hover:text-blue-300 active:text-blue-200 p-2 -m-2 ${boulder.isLocked ? 'opacity-50' : ''}"
                 data-edit-boulder="${boulder.id}"
                 title="Edit boulder"
+                ${boulder.isLocked ? 'disabled' : ''}
               >
                 <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </button>
               <button
-                class="text-red-400 hover:text-red-300 active:text-red-200 p-2 -m-2"
+                class="text-red-400 hover:text-red-300 active:text-red-200 p-2 -m-2 ${boulder.isLocked ? 'opacity-50' : ''}"
                 data-delete-boulder="${boulder.id}"
                 title="Delete boulder"
+                ${boulder.isLocked ? 'disabled' : ''}
               >
                 <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -660,9 +721,19 @@ function renderBoulderList(): void {
       const target = e.target as HTMLElement;
       if (target.closest('[data-delete-boulder]')) return; // Ignore if clicking delete button
       if (target.closest('[data-edit-boulder]')) return; // Ignore if clicking edit button
+      if (target.closest('[data-toggle-lock]')) return; // Ignore if clicking lock button
 
       const boulderId = (el as HTMLElement).dataset.boulderId!;
       selectBoulder(boulderId);
+    });
+  });
+
+  // Add lock toggle handlers
+  listContainer.querySelectorAll('[data-toggle-lock]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const boulderId = (el as HTMLElement).dataset.toggleLock!;
+      toggleBoulderLock(boulderId);
     });
   });
 
@@ -671,6 +742,8 @@ function renderBoulderList(): void {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       const boulderId = (el as HTMLElement).dataset.editBoulder!;
+      const boulder = state.boulders.find(b => b.id === boulderId);
+      if (boulder?.isLocked) return; // Don't edit if locked
       editBoulder(boulderId);
     });
   });
@@ -680,6 +753,8 @@ function renderBoulderList(): void {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       const boulderId = (el as HTMLElement).dataset.deleteBoulder!;
+      const boulder = state.boulders.find(b => b.id === boulderId);
+      if (boulder?.isLocked) return; // Don't delete if locked
       deleteBoulder(boulderId);
     });
   });
@@ -701,15 +776,70 @@ function selectBoulder(boulderId: string): void {
 }
 
 /**
- * Edit a boulder
+ * Toggle boulder lock status
  */
-function editBoulder(boulderId: string): void {
+async function toggleBoulderLock(boulderId: string): Promise<void> {
+  // Only admin can lock/unlock boulders
+  if (currentUser?.email !== 'hofiisek@gmail.com') {
+    alert('Only the admin can lock/unlock boulders.');
+    return;
+  }
+
   const boulder = state.boulders.find(b => b.id === boulderId);
   if (!boulder) return;
+
+  // If locking, no password needed
+  if (!boulder.isLocked) {
+    boulder.isLocked = true;
+    try {
+      await saveBoulder(boulder);
+    } catch (error) {
+      alert('Failed to lock boulder. Please check your connection.');
+      console.error(error);
+    }
+    return;
+  }
+
+  // Unlock the boulder
+  boulder.isLocked = false;
+  try {
+    await saveBoulder(boulder);
+  } catch (error) {
+    alert('Failed to unlock boulder. Please check your connection.');
+    console.error(error);
+  }
+}
+
+/**
+ * Edit a boulder
+ */
+async function editBoulder(boulderId: string): Promise<void> {
+  if (!currentUser) {
+    alert('Please login to edit boulders.');
+    return;
+  }
+
+  const boulder = state.boulders.find(b => b.id === boulderId);
+  if (!boulder) return;
+
+  // Require password to edit
+  const password = await showPasswordDialog('Enter password to edit this boulder:');
+  if (!password) {
+    return; // User cancelled
+  }
+
+  const isValid = await verifyPassword(password);
+  if (!isValid) {
+    alert('Incorrect password. Boulder not loaded for editing.');
+    return;
+  }
 
   // Switch to set mode
   state.mode = 'set';
   updateModeUI();
+
+  // Clear selected boulder so we can see editing changes in real-time
+  state.selectedBoulderId = null;
 
   // Load boulder into current editing state
   state.currentBoulder = { ...boulder, holds: [...boulder.holds] }; // Deep copy
@@ -731,6 +861,11 @@ function editBoulder(boulderId: string): void {
  * Delete a boulder
  */
 async function deleteBoulder(boulderId: string): Promise<void> {
+  if (!currentUser) {
+    alert('Please login to delete boulders.');
+    return;
+  }
+
   const password = await showPasswordDialog('Enter password to delete this boulder:');
   if (!password) {
     return; // User cancelled
@@ -765,13 +900,48 @@ async function deleteBoulder(boulderId: string): Promise<void> {
 // ============================================================================
 
 /**
+ * Update hold type button visual states
+ */
+function updateHoldTypeButtons(): void {
+  const startBtn = document.querySelector('#btn-start') as HTMLButtonElement;
+  const feetOnlyBtn = document.querySelector('#btn-feet-only') as HTMLButtonElement;
+  const middleBtn = document.querySelector('#btn-middle') as HTMLButtonElement;
+  const topBtn = document.querySelector('#btn-top') as HTMLButtonElement;
+
+  [startBtn, feetOnlyBtn, middleBtn, topBtn].forEach(btn => {
+    btn?.classList.remove('ring-2', 'ring-white');
+  });
+
+  if (currentHoldType === 'start') startBtn?.classList.add('ring-2', 'ring-white');
+  if (currentHoldType === 'feet-only') feetOnlyBtn?.classList.add('ring-2', 'ring-white');
+  if (currentHoldType === 'middle') middleBtn?.classList.add('ring-2', 'ring-white');
+  if (currentHoldType === 'top') topBtn?.classList.add('ring-2', 'ring-white');
+}
+
+/**
  * Set up event listeners
  */
 function setupEventListeners(): void {
-  let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
   let panStartX = 0;
   let panStartY = 0;
   let hasPanned = false;
+
+  // Login button
+  document.querySelector('#login-btn')?.addEventListener('click', async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Login failed:', error);
+      alert('Failed to login. Please try again.');
+    }
+  });
+
+  // Logout button
+  document.querySelector('#logout-btn')?.addEventListener('click', async () => {
+    if (confirm('Are you sure you want to logout?')) {
+      await signOut(auth);
+    }
+  });
 
   // Mode switcher buttons
   document.querySelector('#mode-set')?.addEventListener('click', () => {
@@ -802,22 +972,6 @@ function setupEventListeners(): void {
     currentHoldType = currentHoldType === 'top' ? null : 'top';
     updateHoldTypeButtons();
   });
-
-  function updateHoldTypeButtons(): void {
-    const startBtn = document.querySelector('#btn-start') as HTMLButtonElement;
-    const feetOnlyBtn = document.querySelector('#btn-feet-only') as HTMLButtonElement;
-    const middleBtn = document.querySelector('#btn-middle') as HTMLButtonElement;
-    const topBtn = document.querySelector('#btn-top') as HTMLButtonElement;
-
-    [startBtn, feetOnlyBtn, middleBtn, topBtn].forEach(btn => {
-      btn?.classList.remove('ring-2', 'ring-white');
-    });
-
-    if (currentHoldType === 'start') startBtn?.classList.add('ring-2', 'ring-white');
-    if (currentHoldType === 'feet-only') feetOnlyBtn?.classList.add('ring-2', 'ring-white');
-    if (currentHoldType === 'middle') middleBtn?.classList.add('ring-2', 'ring-white');
-    if (currentHoldType === 'top') topBtn?.classList.add('ring-2', 'ring-white');
-  }
 
   // Listen to panzoom events to detect actual panning
   const container = document.querySelector('#panzoom-container');
@@ -872,28 +1026,6 @@ function setupEventListeners(): void {
     }
     exportBoulders(state.boulders);
   });
-
-  // Import button
-  const importInput = document.querySelector('#input-import') as HTMLInputElement;
-  importInput?.addEventListener('change', async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    try {
-      const importedBoulders = await importBoulders(file);
-
-      if (confirm(`Import ${importedBoulders.length} boulders? This will add to your current data.`)) {
-        await saveBoulders(importedBoulders);
-        alert('Boulders imported successfully!');
-      }
-    } catch (error) {
-      alert('Failed to import boulders. Please check the file format.');
-      console.error(error);
-    }
-
-    // Reset input
-    importInput.value = '';
-  });
 }
 
 // ============================================================================
@@ -904,6 +1036,18 @@ function setupEventListeners(): void {
  * Initialize the application
  */
 async function init(): Promise<void> {
+  // Set up auth state listener
+  onAuthStateChanged(auth, async (user) => {
+    currentUser = user;
+    // Always show app, regardless of login status
+    await showApp();
+  });
+}
+
+/**
+ * Show main app
+ */
+async function showApp(): Promise<void> {
   // Render UI first
   renderHTML();
 

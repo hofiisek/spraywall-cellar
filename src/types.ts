@@ -30,6 +30,8 @@ export interface Boulder {
   createdAt: number;
   /** Last modified timestamp */
   updatedAt: number;
+  /** Whether this boulder is locked (only master can edit/delete) */
+  isLocked?: boolean;
 }
 
 /**
