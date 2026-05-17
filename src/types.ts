@@ -26,6 +26,8 @@ export interface Boulder {
   rating?: 1 | 2 | 3;
   /** Description of the boulder (optional) */
   description?: string;
+  /** Style tags (optional) */
+  tags?: string[];
   /** Array of holds that make up the boulder */
   holds: Hold[];
   /** Creation timestamp */

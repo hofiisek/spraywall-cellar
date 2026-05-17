@@ -30,7 +30,12 @@ let panzoomInstance: PanzoomObject | null = null;
 let currentUser: User | null = null;
 let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
 let currentRating: 1 | 2 | 3 | null = null;
+let currentTags: Set<string> = new Set();
 let sortMode: 'grade' | 'stars' = 'grade';
+
+const AVAILABLE_TAGS = ['Crimps', 'Slopers', 'Pinches', 'Dyno'];
+const NAME_MAX_LENGTH = 100;
+const DESCRIPTION_MAX_LENGTH = 250;
 
 // ============================================================================
 // Utility Functions
@@ -225,6 +230,7 @@ function renderHTML(): void {
             type="text"
             id="boulder-name"
             placeholder="Name"
+            maxlength="100"
             class="w-full px-3 py-2 mb-2 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <select
@@ -257,8 +263,14 @@ function renderHTML(): void {
             id="boulder-description"
             placeholder="Description (optional)"
             rows="2"
+            maxlength="250"
             class="w-full px-3 py-2 mb-3 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
           ></textarea>
+          <div id="boulder-tags" class="flex flex-wrap gap-2 mb-3">
+            ${AVAILABLE_TAGS.map(tag => `
+              <button type="button" data-tag="${tag}" class="px-3 py-1 rounded text-sm bg-gray-600 text-gray-300 hover:bg-gray-500">${tag}</button>
+            `).join('')}
+          </div>
           <div class="grid grid-cols-2 gap-2 mb-3">
             <button id="btn-start" class="px-3 py-3 md:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 rounded font-medium text-sm md:text-base">
               Start
@@ -599,6 +611,11 @@ async function saveCurrentBoulder(): Promise<void> {
     nameInput.focus();
     return;
   }
+  if (name.length > NAME_MAX_LENGTH) {
+    alert(`Name must be ${NAME_MAX_LENGTH} characters or fewer.`);
+    nameInput.focus();
+    return;
+  }
 
   const grade = gradeInput.value.trim();
   if (!grade) {
@@ -613,6 +630,11 @@ async function saveCurrentBoulder(): Promise<void> {
   }
 
   const description = descriptionInput.value.trim();
+  if (description.length > DESCRIPTION_MAX_LENGTH) {
+    alert(`Description must be ${DESCRIPTION_MAX_LENGTH} characters or fewer.`);
+    descriptionInput.focus();
+    return;
+  }
 
   state.currentBoulder.name = name;
   state.currentBoulder.grade = grade;
@@ -621,6 +643,11 @@ async function saveCurrentBoulder(): Promise<void> {
     state.currentBoulder.description = description;
   } else {
     delete state.currentBoulder.description;
+  }
+  if (currentTags.size > 0) {
+    state.currentBoulder.tags = [...currentTags];
+  } else {
+    delete state.currentBoulder.tags;
   }
   state.currentBoulder.updatedAt = Date.now();
 
@@ -641,6 +668,10 @@ async function saveCurrentBoulder(): Promise<void> {
     // Reset rating
     currentRating = null;
     updateRatingStars();
+
+    // Reset tags
+    currentTags.clear();
+    updateTagButtons();
 
     renderHolds();
   } catch (error) {
@@ -676,6 +707,10 @@ function clearCurrentBoulder(): void {
   // Reset rating
   currentRating = null;
   updateRatingStars();
+
+  // Reset tags
+  currentTags.clear();
+  updateTagButtons();
 
   renderHolds();
   renderBoulderList();
@@ -728,7 +763,12 @@ function renderBoulderList(): void {
                   ${boulder.rating ? `<span><span class="text-amber-400">${'★'.repeat(boulder.rating)}</span><span class="text-gray-600">${'★'.repeat(3 - boulder.rating)}</span></span>` : ''}
                 </p>
               ` : ''}
-              ${boulder.description ? `<p class="text-xs md:text-xs text-gray-400 mt-1 italic">${boulder.description}</p>` : ''}
+              ${boulder.description ? `<p class="text-xs md:text-xs text-gray-400 mt-1 italic whitespace-pre-wrap break-words">${boulder.description}</p>` : ''}
+              ${boulder.tags && boulder.tags.length > 0 ? `
+                <div class="flex flex-wrap gap-1 mt-1">
+                  ${boulder.tags.map(t => `<span class="px-2 py-0.5 rounded bg-gray-500 text-gray-100 text-xs">${t}</span>`).join('')}
+                </div>
+              ` : ''}
               <p class="text-sm md:text-xs text-gray-400 mt-1">${boulder.holds.length} holds</p>
             </div>
             <div class="flex flex-col gap-2 ml-2">
@@ -913,6 +953,10 @@ async function editBoulder(boulderId: string): Promise<void> {
   currentRating = boulder.rating ?? null;
   updateRatingStars();
 
+  // Restore tags
+  currentTags = new Set(boulder.tags ?? []);
+  updateTagButtons();
+
   // Render holds
   renderHolds();
 }
@@ -991,6 +1035,20 @@ function updateRatingStars(): void {
 }
 
 /**
+ * Update tag toggle button visual states
+ */
+function updateTagButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>('#boulder-tags [data-tag]').forEach(btn => {
+    const tag = btn.dataset.tag!;
+    const active = currentTags.has(tag);
+    btn.classList.toggle('bg-amber-400', active);
+    btn.classList.toggle('text-gray-900', active);
+    btn.classList.toggle('bg-gray-600', !active);
+    btn.classList.toggle('text-gray-300', !active);
+  });
+}
+
+/**
  * Update sort toggle button visual states
  */
 function updateSortButtons(): void {
@@ -1065,6 +1123,17 @@ function setupEventListeners(): void {
     currentRating = currentRating === n ? null : n;
     updateRatingStars();
   });
+
+  // Tag toggle buttons (event delegation)
+  document.querySelector('#boulder-tags')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-tag]') as HTMLElement | null;
+    if (!btn) return;
+    const tag = btn.dataset.tag!;
+    if (currentTags.has(tag)) currentTags.delete(tag); else currentTags.add(tag);
+    updateTagButtons();
+  });
+
+  updateTagButtons();
 
   // Sort toggle (event delegation)
   document.querySelector('#boulder-sort')?.addEventListener('click', (e) => {
