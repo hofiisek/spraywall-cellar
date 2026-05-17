@@ -30,6 +30,7 @@ let panzoomInstance: PanzoomObject | null = null;
 let currentUser: User | null = null;
 let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
 let currentRating: 1 | 2 | 3 | null = null;
+let sortMode: 'grade' | 'stars' = 'grade';
 
 // ============================================================================
 // Utility Functions
@@ -289,6 +290,10 @@ function renderHTML(): void {
           <div class="flex justify-between items-center mb-3">
             <h2 class="text-lg font-semibold">Your boulders</h2>
             <div class="flex items-center gap-2">
+              <div id="boulder-sort" class="flex bg-gray-700 rounded text-xs overflow-hidden">
+                <button data-sort="grade" class="px-2 py-1" title="Sort by grade (hardest first)">Grade</button>
+                <button data-sort="stars" class="px-2 py-1" title="Sort by stars (best first)">Stars</button>
+              </div>
               ${currentUser ? `
               <button id="btn-export" class="text-indigo-400 hover:text-indigo-300 p-1" title="Export JSON">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -694,8 +699,19 @@ function renderBoulderList(): void {
     return;
   }
 
-  listContainer.innerHTML = state.boulders
-    .sort((a, b) => b.createdAt - a.createdAt)
+  listContainer.innerHTML = [...state.boulders]
+    .sort((a, b) => {
+      const gradeDiff = (b.grade ?? '').localeCompare(a.grade ?? '');
+      const ratingDiff = (b.rating ?? 0) - (a.rating ?? 0);
+      if (sortMode === 'grade') {
+        if (gradeDiff !== 0) return gradeDiff;
+        if (ratingDiff !== 0) return ratingDiff;
+      } else {
+        if (ratingDiff !== 0) return ratingDiff;
+        if (gradeDiff !== 0) return gradeDiff;
+      }
+      return b.createdAt - a.createdAt;
+    })
     .map((boulder) => {
       const isSelected = state.selectedBoulderId === boulder.id;
       return `
@@ -975,6 +991,18 @@ function updateRatingStars(): void {
 }
 
 /**
+ * Update sort toggle button visual states
+ */
+function updateSortButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>('#boulder-sort [data-sort]').forEach(btn => {
+    const active = btn.dataset.sort === sortMode;
+    btn.classList.toggle('bg-blue-600', active);
+    btn.classList.toggle('text-white', active);
+    btn.classList.toggle('text-gray-300', !active);
+  });
+}
+
+/**
  * Set up event listeners
  */
 function setupEventListeners(): void {
@@ -1037,6 +1065,19 @@ function setupEventListeners(): void {
     currentRating = currentRating === n ? null : n;
     updateRatingStars();
   });
+
+  // Sort toggle (event delegation)
+  document.querySelector('#boulder-sort')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-sort]') as HTMLElement | null;
+    if (!btn) return;
+    const mode = btn.dataset.sort as 'grade' | 'stars';
+    if (mode === sortMode) return;
+    sortMode = mode;
+    updateSortButtons();
+    renderBoulderList();
+  });
+
+  updateSortButtons();
 
   // Listen to panzoom events to detect actual panning
   const container = document.querySelector('#panzoom-container');
