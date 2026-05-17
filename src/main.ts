@@ -29,6 +29,7 @@ let state: AppState = {
 let panzoomInstance: PanzoomObject | null = null;
 let currentUser: User | null = null;
 let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
+let currentRating: 1 | 2 | 3 | null = null;
 
 // ============================================================================
 // Utility Functions
@@ -225,12 +226,32 @@ function renderHTML(): void {
             placeholder="Boulder name"
             class="w-full px-3 py-2 mb-2 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <input
-            type="text"
+          <select
             id="boulder-grade"
-            placeholder="Grade"
-            class="w-full px-3 py-2 mb-2 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+            required
+            class="w-full px-3 py-2 mb-2 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 invalid:text-gray-400"
+          >
+            <option value="" disabled selected>Grade</option>
+            ${['5a', '5a+', '5b', '5b+', '5c', '5c+', '6a', '6a+', '6b', '6b+', '6c', '6c+', '7a', '7a+', '7b', '7b+', '7c', '7c+']
+              .map(g => `<option value="${g}">${g}</option>`)
+              .join('')}
+          </select>
+          <div class="mb-2">
+            <div id="boulder-rating" class="flex gap-1">
+              ${[1, 2, 3].map(n => `
+                <button
+                  type="button"
+                  data-rating="${n}"
+                  class="rating-star p-2 -m-1 text-gray-500 hover:text-amber-300"
+                  title="${n} star${n > 1 ? 's' : ''}"
+                >
+                  <svg class="w-7 h-7 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                  </svg>
+                </button>
+              `).join('')}
+            </div>
+          </div>
           <textarea
             id="boulder-description"
             placeholder="Description (optional)"
@@ -521,7 +542,7 @@ function switchMode(mode: 'set' | 'climb'): void {
 
     // Clear form fields
     const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
-    const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+    const gradeInput = document.querySelector('#boulder-grade') as HTMLSelectElement;
     const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
     if (nameInput) nameInput.value = '';
     if (gradeInput) gradeInput.value = '';
@@ -564,7 +585,7 @@ async function saveCurrentBoulder(): Promise<void> {
   }
 
   const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
-  const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+  const gradeInput = document.querySelector('#boulder-grade') as HTMLSelectElement;
   const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
 
   const name = nameInput.value.trim();
@@ -581,10 +602,16 @@ async function saveCurrentBoulder(): Promise<void> {
     return;
   }
 
+  if (currentRating === null) {
+    alert('Please select a star rating.');
+    return;
+  }
+
   const description = descriptionInput.value.trim();
 
   state.currentBoulder.name = name;
   state.currentBoulder.grade = grade;
+  state.currentBoulder.rating = currentRating;
   if (description) {
     state.currentBoulder.description = description;
   } else {
@@ -605,6 +632,10 @@ async function saveCurrentBoulder(): Promise<void> {
     // Reset hold type selection
     currentHoldType = null;
     updateHoldTypeButtons();
+
+    // Reset rating
+    currentRating = null;
+    updateRatingStars();
 
     renderHolds();
   } catch (error) {
@@ -627,7 +658,7 @@ function clearCurrentBoulder(): void {
   state.currentBoulder = null;
   state.selectedBoulderId = null;
   const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
-  const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+  const gradeInput = document.querySelector('#boulder-grade') as HTMLSelectElement;
   const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
   if (nameInput) nameInput.value = '';
   if (gradeInput) gradeInput.value = '';
@@ -636,6 +667,10 @@ function clearCurrentBoulder(): void {
   // Reset hold type selection
   currentHoldType = null;
   updateHoldTypeButtons();
+
+  // Reset rating
+  currentRating = null;
+  updateRatingStars();
 
   renderHolds();
   renderBoulderList();
@@ -671,7 +706,12 @@ function renderBoulderList(): void {
           <div class="flex justify-between items-start">
             <div class="flex-1">
               <h3 class="font-medium text-base md:text-sm">${boulder.name}</h3>
-              ${boulder.grade ? `<p class="text-sm md:text-sm text-gray-300">${boulder.grade}</p>` : ''}
+              ${boulder.grade || boulder.rating ? `
+                <p class="text-sm md:text-sm text-gray-300 flex items-center gap-2">
+                  ${boulder.grade ? `<span>${boulder.grade}</span>` : ''}
+                  ${boulder.rating ? `<span><span class="text-amber-400">${'★'.repeat(boulder.rating)}</span><span class="text-gray-600">${'★'.repeat(3 - boulder.rating)}</span></span>` : ''}
+                </p>
+              ` : ''}
               ${boulder.description ? `<p class="text-xs md:text-xs text-gray-400 mt-1 italic">${boulder.description}</p>` : ''}
               <p class="text-sm md:text-xs text-gray-400 mt-1">${boulder.holds.length} holds</p>
             </div>
@@ -846,12 +886,16 @@ async function editBoulder(boulderId: string): Promise<void> {
 
   // Fill form fields
   const nameInput = document.querySelector('#boulder-name') as HTMLInputElement;
-  const gradeInput = document.querySelector('#boulder-grade') as HTMLInputElement;
+  const gradeInput = document.querySelector('#boulder-grade') as HTMLSelectElement;
   const descriptionInput = document.querySelector('#boulder-description') as HTMLTextAreaElement;
 
   if (nameInput) nameInput.value = boulder.name;
   if (gradeInput) gradeInput.value = boulder.grade || '';
   if (descriptionInput) descriptionInput.value = boulder.description || '';
+
+  // Restore rating
+  currentRating = boulder.rating ?? null;
+  updateRatingStars();
 
   // Render holds
   renderHolds();
@@ -919,6 +963,18 @@ function updateHoldTypeButtons(): void {
 }
 
 /**
+ * Update star rating button visual states
+ */
+function updateRatingStars(): void {
+  document.querySelectorAll<HTMLButtonElement>('#boulder-rating [data-rating]').forEach(btn => {
+    const n = Number(btn.dataset.rating) as 1 | 2 | 3;
+    const filled = currentRating !== null && n <= currentRating;
+    btn.classList.toggle('text-amber-400', filled);
+    btn.classList.toggle('text-gray-500', !filled);
+  });
+}
+
+/**
  * Set up event listeners
  */
 function setupEventListeners(): void {
@@ -971,6 +1027,15 @@ function setupEventListeners(): void {
   document.querySelector('#btn-top')?.addEventListener('click', () => {
     currentHoldType = currentHoldType === 'top' ? null : 'top';
     updateHoldTypeButtons();
+  });
+
+  // Rating star buttons (event delegation)
+  document.querySelector('#boulder-rating')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-rating]') as HTMLElement | null;
+    if (!btn) return;
+    const n = Number(btn.dataset.rating) as 1 | 2 | 3;
+    currentRating = currentRating === n ? null : n;
+    updateRatingStars();
   });
 
   // Listen to panzoom events to detect actual panning

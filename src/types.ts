@@ -22,6 +22,8 @@ export interface Boulder {
   name: string;
   /** Difficulty grade (optional) */
   grade?: string;
+  /** Quality rating, 1-3 stars. Optional for backward compat with pre-existing data; required on save. */
+  rating?: 1 | 2 | 3;
   /** Description of the boulder (optional) */
   description?: string;
   /** Array of holds that make up the boulder */
