@@ -4,7 +4,9 @@
 
 /* Custom styles for the spraywall tracker */
 .hold-marker {
-  @apply w-10 h-10 md:w-8 md:h-8 rounded-full border-4 shadow-lg cursor-pointer;
+  width: 3.8%;
+  aspect-ratio: 1;
+  @apply rounded-full border-[4px] shadow-lg cursor-pointer;
   position: absolute;
   transform: translate(-50%, -50%);
   pointer-events: none;
@@ -20,11 +22,11 @@
 }
 
 .hold-marker.middle {
-  border-color: rgb(29 78 216); /* blue-700 - even darker blue */
+  border-color: rgb(255 255 255); /* white */
 }
 
 .hold-marker.top {
-  border-color: rgb(147 51 234); /* purple-600 - more saturated purple */
+  border-color: rgb(239 68 68); /* red-500 */
 }
 
 .spraywall-container {
