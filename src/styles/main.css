@@ -3,10 +3,16 @@
 @tailwind utilities;
 
 /* Custom styles for the spraywall tracker */
+#holds-overlay {
+  container-type: inline-size;
+}
+
 .hold-marker {
   width: 3.8%;
   aspect-ratio: 1;
-  @apply rounded-full border-[4px] shadow-lg cursor-pointer;
+  @apply rounded-full shadow-lg cursor-pointer;
+  border-style: solid;
+  border-width: clamp(1px, 0.4cqw, 5px);
   position: absolute;
   transform: translate(-50%, -50%);
   pointer-events: none;
