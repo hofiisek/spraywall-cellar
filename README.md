@@ -10,7 +10,7 @@ A simple web app for my DIY home climbing spraywall. Fully vibecoded.
 
 🧗‍♂️ **Enter the send mode** to browse through the boulders, sorted by stars or grade based on how weak you are. Grab your stinky shoes, **chalk the fuck up and send hard**! 💪💪
 
-🔐 **Log in with your Google account** to edit/delete boulders — if you're a friend close enough to know the password, that is :)
+🔐 **Log in with your Google account** to edit/delete your boulders.
 
 ---
 
