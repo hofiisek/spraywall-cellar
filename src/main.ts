@@ -33,7 +33,7 @@ let currentRating: 1 | 2 | 3 | null = null;
 let currentTags: Set<string> = new Set();
 let sortMode: 'grade' | 'stars' = 'grade';
 
-const AVAILABLE_TAGS = ['Crimps', 'Slopers', 'Pinches', 'Dyno'];
+const AVAILABLE_TAGS = ['Crimps', 'Slopers', 'Pinches', 'Underclings', 'Pockets', 'Dyno', 'Technical'];
 const NAME_MAX_LENGTH = 100;
 const DESCRIPTION_MAX_LENGTH = 250;
 
