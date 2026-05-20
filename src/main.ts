@@ -374,8 +374,10 @@ function initializePanzoom(): void {
     const frame = container.parentElement!;
     const frameWidth = frame.clientWidth;
     const frameHeight = frame.clientHeight;
-    const imgWidth = img.naturalWidth;
-    const imgHeight = img.naturalHeight;
+    // Use rendered (CSS) dimensions, not naturalWidth/Height — the image is laid out by
+    // `.spraywall-image { max-width: 100% }`, so its rendered size is what panzoom transforms.
+    const imgWidth = img.clientWidth || img.naturalWidth;
+    const imgHeight = img.clientHeight || img.naturalHeight;
 
     // Calculate scale to fit and fill the frame
     const scaleX = frameWidth / imgWidth;
@@ -383,7 +385,7 @@ function initializePanzoom(): void {
     const fitScale = Math.min(scaleX, scaleY); // Fits entirely in frame
     const fillScale = Math.max(scaleX, scaleY); // Fills frame completely
 
-    const startScale = fillScale * 3; // Start at 3x fill scale to make image bigger
+    const startScale = fillScale; // Start at fill scale so the image fills the frame (slight crop on one axis)
 
     panzoomInstance = Panzoom(container, {
       maxScale: 5,
