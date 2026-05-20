@@ -16,4 +16,4 @@ A simple web app for my DIY home climbing spraywall. Fully vibecoded.
 
 Built with TypeScript, Vite, Tailwind CSS, Panzoom, Firebase... and Claude!
 
-Deployed and running at https://hofiisek.github.io/spraywall-cellar/ via GitHub Pages.
+Deployed and running at https://hofiisek.github.io/the-spraywall-cellar/ via GitHub Pages.
