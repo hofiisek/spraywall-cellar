@@ -53,10 +53,21 @@ export interface AppState {
 }
 
 /**
- * Data structure for export/import
+ * A versioned snapshot of the spraywall photo. Holds inside its boulders are
+ * stored as percent coords relative to THIS board's image.
  */
-export interface ExportData {
+export interface Board {
+  id: string;
+  /** Human-readable label, format "vYYYYMMDD" (e.g. "v20260522") */
   version: string;
-  exportedAt: number;
-  boulders: Boulder[];
+  createdAt: number;
+  updatedAt: number;
+  /** false for the initial migrated board, true for every uploaded recalibration */
+  recalibrated: boolean;
+  /** Public download URL for the spraywall image */
+  imageUrl: string;
+  /** Storage path, e.g. "boards/{id}.jpg" — kept so the blob can be deleted later */
+  imagePath: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }

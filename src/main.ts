@@ -5,10 +5,18 @@
 
 import './styles/main.css';
 import Panzoom, { PanzoomObject } from '@panzoom/panzoom';
-import type { AppState, Boulder, Hold } from './types';
-import { loadBoulders, saveBoulder, exportBoulders, subscribeToBoulders, deleteBoulderFromFirebase } from './storage';
+import type { AppState, Board, Boulder, Hold } from './types';
+import {
+  saveBoulder,
+  subscribeToBoulders,
+  deleteBoulderFromFirebase,
+  subscribeToLatestBoard,
+} from './storage';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
+import { openRecalibrationModal } from './calibrationUI';
+
+const ADMIN_EMAIL = 'hofiisek@gmail.com';
 
 // ============================================================================
 // State
@@ -26,6 +34,14 @@ let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
 let currentRating: 1 | 2 | 3 | null = null;
 let currentTags: Set<string> = new Set();
 let sortMode: 'grade' | 'stars' = 'grade';
+
+let activeBoard: Board | null = null;
+let boardUnsub: (() => void) | null = null;
+let bouldersUnsub: (() => void) | null = null;
+
+function isAdmin(): boolean {
+  return currentUser?.email === ADMIN_EMAIL;
+}
 
 const AVAILABLE_TAGS = ['Crimps', 'Slopers', 'Pinches', 'Underclings', 'Pockets', 'Dyno', 'Technical'];
 const NAME_MAX_LENGTH = 100;
@@ -75,7 +91,7 @@ function renderHTML(): void {
           <h1 class="text-xl md:text-2xl font-bold mb-1">The Spraywall Cellar</h1>
           <p class="text-xs md:text-sm text-gray-400">Set boulders. Chalk the fuck up. Send it.</p>
         </div>
-        ${currentUser ? `<p class="text-xs text-gray-500 mb-3">Logged in as: ${currentUser.email}</p>` : `<p class="text-xs text-yellow-500 mb-3">⚠️ Login to edit/delete boulders</p>`}
+        ${currentUser ? `<p class="text-xs text-gray-500 mb-3">Logged in as: ${currentUser.email}</p>` : `<p class="text-xs text-yellow-500 mb-3">⚠️ Login to create/edit/delete boulders</p>`}
 
         <!-- Mode Switcher -->
         <div class="flex gap-2 mb-4 md:mb-6 p-1 bg-gray-700 rounded-lg">
@@ -163,21 +179,24 @@ function renderHTML(): void {
 
         <!-- Boulder List -->
         <div id="climb-mode-content" class="flex-1 overflow-y-auto">
-          <div class="flex justify-between items-center mb-3">
-            <h2 class="text-lg font-semibold">Your boulders</h2>
+          <div class="flex justify-between items-center mb-3 gap-2">
+            <h2 class="inline-flex items-center gap-1 bg-gray-700 rounded px-2 py-1 text-xs font-semibold text-gray-300">
+              <span>Board:</span>
+              <span id="board-version-label" class="font-normal">${activeBoard ? activeBoard.version : '—'}</span>
+              <span class="font-normal text-gray-500">(<span id="boulder-count">0</span>)</span>
+              ${isAdmin() ? `
+              <button id="btn-recalibrate" class="ml-1 p-0.5 text-purple-300 hover:text-purple-200 active:text-purple-100" title="Upload new photo & recalibrate">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v12m0-12l-4 4m4-4l4 4" />
+                </svg>
+              </button>
+              ` : ''}
+            </h2>
             <div class="flex items-center gap-2">
               <div id="boulder-sort" class="flex bg-gray-700 rounded text-xs overflow-hidden">
                 <button data-sort="grade" class="px-2 py-1" title="Sort by grade (hardest first)">Grade</button>
                 <button data-sort="stars" class="px-2 py-1" title="Sort by stars (best first)">Stars</button>
               </div>
-              ${currentUser ? `
-              <button id="btn-export" class="text-indigo-400 hover:text-indigo-300 p-1" title="Export JSON">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-              </button>
-              ` : ''}
-              <span class="text-sm text-gray-400" id="boulder-count">0</span>
             </div>
           </div>
           <div id="boulder-list" class="space-y-2">
@@ -202,7 +221,7 @@ function renderHTML(): void {
           <div id="panzoom-container" class="spraywall-container h-full w-full flex items-center justify-center">
             <div style="position: relative; display: inline-block;">
               <img
-                src="./spraywall.jpg"
+                ${activeBoard ? `src="${activeBoard.imageUrl}"` : ''}
                 alt="Spraywall"
                 class="spraywall-image"
                 id="spraywall-img"
@@ -270,10 +289,12 @@ function initializePanzoom(): void {
     });
   };
 
-  if (img.complete) {
+  // Wait until the image has real dimensions. `img.complete` is true for an
+  // img element with no src yet, which would zero out the fit-scale math.
+  if (img.naturalWidth > 0) {
     initPanzoom();
   } else {
-    img.addEventListener('load', initPanzoom);
+    img.addEventListener('load', initPanzoom, { once: true });
   }
 }
 
@@ -457,6 +478,11 @@ function switchMode(mode: 'set' | 'climb'): void {
  * Save the current boulder
  */
 async function saveCurrentBoulder(): Promise<void> {
+  if (!currentUser) {
+    alert('Please login to save boulders.');
+    return;
+  }
+
   if (!state.currentBoulder) {
     alert('No boulder to save. Add some holds first!');
     return;
@@ -517,9 +543,14 @@ async function saveCurrentBoulder(): Promise<void> {
   }
   state.currentBoulder.updatedAt = Date.now();
 
+  if (!activeBoard) {
+    alert('No board configured yet. Please reload or contact the admin.');
+    return;
+  }
+
   // Save to Firebase
   try {
-    await saveBoulder(state.currentBoulder);
+    await saveBoulder(activeBoard.id, state.currentBoulder);
 
     // Clear current boulder
     state.currentBoulder = null;
@@ -750,11 +781,13 @@ async function toggleBoulderLock(boulderId: string): Promise<void> {
   const boulder = state.boulders.find(b => b.id === boulderId);
   if (!boulder) return;
 
+  if (!activeBoard) return;
+
   // If locking, no password needed
   if (!boulder.isLocked) {
     boulder.isLocked = true;
     try {
-      await saveBoulder(boulder);
+      await saveBoulder(activeBoard.id, boulder);
     } catch (error) {
       alert('Failed to lock boulder. Please check your connection.');
       console.error(error);
@@ -765,7 +798,7 @@ async function toggleBoulderLock(boulderId: string): Promise<void> {
   // Unlock the boulder
   boulder.isLocked = false;
   try {
-    await saveBoulder(boulder);
+    await saveBoulder(activeBoard.id, boulder);
   } catch (error) {
     alert('Failed to unlock boulder. Please check your connection.');
     console.error(error);
@@ -832,9 +865,11 @@ async function deleteBoulder(boulderId: string): Promise<void> {
     return;
   }
 
+  if (!activeBoard) return;
+
   // Delete from Firebase
   try {
-    await deleteBoulderFromFirebase(boulderId);
+    await deleteBoulderFromFirebase(activeBoard.id, boulderId);
 
     if (state.selectedBoulderId === boulderId) {
       state.selectedBoulderId = null;
@@ -1040,13 +1075,17 @@ function setupEventListeners(): void {
   // Clear button
   document.querySelector('#btn-clear')?.addEventListener('click', clearCurrentBoulder);
 
-  // Export button
-  document.querySelector('#btn-export')?.addEventListener('click', () => {
-    if (state.boulders.length === 0) {
-      alert('No boulders to export.');
+  // Recalibrate button (admin only — element only rendered for admin)
+  document.querySelector('#btn-recalibrate')?.addEventListener('click', () => {
+    if (!isAdmin()) return;
+    if (!activeBoard) {
+      alert('Wait for the current board to load before recalibrating.');
       return;
     }
-    exportBoulders(state.boulders);
+    openRecalibrationModal({
+      currentBoard: activeBoard,
+      currentBoulders: state.boulders,
+    });
   });
 }
 
@@ -1067,24 +1106,74 @@ async function init(): Promise<void> {
 }
 
 /**
- * Show main app
+ * Resubscribe to the active board's boulders subcollection. Tears down any
+ * prior subscription first.
  */
-async function showApp(): Promise<void> {
-  // Render UI first
-  renderHTML();
-
-  // Load saved boulders from Firebase
-  state.boulders = await loadBoulders();
-  renderBoulderList();
-
-  // Subscribe to real-time updates
-  subscribeToBoulders((boulders) => {
+function resubscribeBoulders(boardId: string): void {
+  if (bouldersUnsub) {
+    bouldersUnsub();
+    bouldersUnsub = null;
+  }
+  bouldersUnsub = subscribeToBoulders(boardId, (boulders) => {
     state.boulders = boulders;
     renderBoulderList();
-    // Re-render holds if viewing a boulder that got updated
     if (state.selectedBoulderId) {
       renderHolds();
     }
+  });
+}
+
+/**
+ * Apply a new active board: swap the image src and resubscribe boulders.
+ */
+function applyActiveBoard(board: Board | null): void {
+  activeBoard = board;
+  const img = document.querySelector('#spraywall-img') as HTMLImageElement | null;
+  if (img) {
+    if (board) {
+      img.src = board.imageUrl;
+    } else {
+      img.removeAttribute('src');
+    }
+  }
+  const versionLabel = document.querySelector('#board-version-label');
+  if (versionLabel) {
+    versionLabel.textContent = board ? board.version : '—';
+  }
+  if (board) {
+    resubscribeBoulders(board.id);
+  } else {
+    if (bouldersUnsub) {
+      bouldersUnsub();
+      bouldersUnsub = null;
+    }
+    state.boulders = [];
+    renderBoulderList();
+  }
+}
+
+/**
+ * Show main app
+ */
+async function showApp(): Promise<void> {
+  // Tear down any prior subscriptions before re-rendering UI
+  if (boardUnsub) {
+    boardUnsub();
+    boardUnsub = null;
+  }
+  if (bouldersUnsub) {
+    bouldersUnsub();
+    bouldersUnsub = null;
+  }
+
+  // Render UI first (uses activeBoard for the image src)
+  renderHTML();
+  renderBoulderList();
+
+  // Subscribe to the latest board — fires immediately with whatever is there,
+  // and again whenever a recalibration creates a new board.
+  boardUnsub = subscribeToLatestBoard((board) => {
+    applyActiveBoard(board);
   });
 
   // Initialize panzoom

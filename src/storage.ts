@@ -1,147 +1,144 @@
-import type { Boulder, ExportData } from './types';
-import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import type { Board, Boulder } from './types';
+import { db, storage } from './firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-const STORAGE_VERSION = '1.0.0';
-const BOULDERS_COLLECTION = 'boulders';
+const BOARDS_COLLECTION = 'boards';
+const BOULDERS_SUBCOLLECTION = 'boulders';
+
+// ============================================================================
+// Boards
+// ============================================================================
+
+/** Format a Date as "vYYYYMMDD" for use as a Board.version label. */
+export function formatBoardVersion(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `v${y}${m}${day}`;
+}
 
 /**
- * Save a single boulder to Firebase
+ * Query the top-N boards by version. We do the createdAt tiebreaker
+ * client-side to avoid requiring a Firestore composite index.
  */
-export async function saveBoulder(boulder: Boulder): Promise<void> {
+function topBoardsQuery() {
+  return query(collection(db, BOARDS_COLLECTION), orderBy('version', 'desc'), limit(10));
+}
+
+/**
+ * Pick the "latest" board from a candidate list: highest version, then
+ * highest createdAt as a tiebreaker. The fixed-width "vYYYYMMDD" string
+ * sorts lexicographically the same as chronologically.
+ */
+function pickLatest(boards: Board[]): Board | null {
+  if (boards.length === 0) return null;
+  return [...boards].sort((a, b) => {
+    if (a.version !== b.version) return a.version < b.version ? 1 : -1;
+    return b.createdAt - a.createdAt;
+  })[0];
+}
+
+/**
+ * Subscribe to the latest board. Fires immediately with the current latest
+ * and again whenever a newer board (higher version, then higher createdAt) is added.
+ */
+export function subscribeToLatestBoard(callback: (board: Board | null) => void): () => void {
+  const q = topBoardsQuery();
+  return onSnapshot(
+    q,
+    (snap) => {
+      const boards = snap.docs.map((d) => d.data() as Board);
+      callback(pickLatest(boards));
+    },
+    (error) => {
+      console.error('Error subscribing to latest board:', error);
+    },
+  );
+}
+
+/**
+ * Upload an image to Storage at boards/{boardId}.jpg and return its public URL
+ * + natural dimensions.
+ */
+export async function uploadBoardImage(
+  file: File,
+  boardId: string,
+): Promise<{ url: string; path: string; width: number; height: number }> {
+  const path = `boards/${boardId}.jpg`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file, { contentType: file.type || 'image/jpeg' });
+  const url = await getDownloadURL(ref);
+
+  const { width, height } = await readImageDimensions(file);
+  return { url, path, width, height };
+}
+
+function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const result = { width: img.naturalWidth, height: img.naturalHeight };
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to read image dimensions'));
+    };
+    img.src = url;
+  });
+}
+
+// ============================================================================
+// Boulders (under boards/{boardId}/boulders)
+// ============================================================================
+
+function bouldersCol(boardId: string) {
+  return collection(db, BOARDS_COLLECTION, boardId, BOULDERS_SUBCOLLECTION);
+}
+
+export async function saveBoulder(boardId: string, boulder: Boulder): Promise<void> {
   try {
-    await setDoc(doc(db, BOULDERS_COLLECTION, boulder.id), boulder);
+    await setDoc(doc(bouldersCol(boardId), boulder.id), boulder);
   } catch (error) {
-    console.error('Failed to save boulder to Firebase:', error);
+    console.error('Failed to save boulder:', error);
     throw new Error('Failed to save boulder. Check your connection.');
   }
 }
 
-/**
- * Save multiple boulders to Firebase
- */
-export async function saveBoulders(boulders: Boulder[]): Promise<void> {
-  try {
-    const promises = boulders.map(boulder =>
-      setDoc(doc(db, BOULDERS_COLLECTION, boulder.id), boulder)
-    );
-    await Promise.all(promises);
-  } catch (error) {
-    console.error('Failed to save boulders to Firebase:', error);
-    throw new Error('Failed to save boulders. Check your connection.');
-  }
+export function subscribeToBoulders(
+  boardId: string,
+  callback: (boulders: Boulder[]) => void,
+): () => void {
+  return onSnapshot(
+    bouldersCol(boardId),
+    (snap) => {
+      const boulders: Boulder[] = [];
+      snap.forEach((d) => boulders.push(d.data() as Boulder));
+      callback(boulders);
+    },
+    (error) => {
+      console.error('Error subscribing to boulders:', error);
+    },
+  );
 }
 
-/**
- * Load all boulders from Firebase
- */
-export async function loadBoulders(): Promise<Boulder[]> {
+export async function deleteBoulderFromFirebase(boardId: string, boulderId: string): Promise<void> {
   try {
-    const querySnapshot = await getDocs(collection(db, BOULDERS_COLLECTION));
-    const boulders: Boulder[] = [];
-    querySnapshot.forEach((doc) => {
-      boulders.push(doc.data() as Boulder);
-    });
-    return boulders;
+    await deleteDoc(doc(bouldersCol(boardId), boulderId));
   } catch (error) {
-    console.error('Failed to load boulders from Firebase:', error);
-    return [];
-  }
-}
-
-/**
- * Subscribe to real-time boulder updates
- */
-export function subscribeToBoulders(callback: (boulders: Boulder[]) => void): () => void {
-  const unsubscribe = onSnapshot(collection(db, BOULDERS_COLLECTION), (snapshot) => {
-    const boulders: Boulder[] = [];
-    snapshot.forEach((doc) => {
-      boulders.push(doc.data() as Boulder);
-    });
-    callback(boulders);
-  }, (error) => {
-    console.error('Error subscribing to boulders:', error);
-  });
-
-  return unsubscribe;
-}
-
-/**
- * Delete a boulder from Firebase
- */
-export async function deleteBoulderFromFirebase(boulderId: string): Promise<void> {
-  try {
-    await deleteDoc(doc(db, BOULDERS_COLLECTION, boulderId));
-  } catch (error) {
-    console.error('Failed to delete boulder from Firebase:', error);
+    console.error('Failed to delete boulder:', error);
     throw new Error('Failed to delete boulder. Check your connection.');
-  }
-}
-
-/**
- * Export boulders as JSON file
- */
-export function exportBoulders(boulders: Boulder[]): void {
-  const exportData: ExportData = {
-    version: STORAGE_VERSION,
-    exportedAt: Date.now(),
-    boulders,
-  };
-
-  const dataStr = JSON.stringify(exportData, null, 2);
-  const blob = new Blob([dataStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `spraywall-boulders-${new Date().toISOString().split('T')[0]}.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
-}
-
-/**
- * Import boulders from JSON file
- */
-export function importBoulders(file: File): Promise<Boulder[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string) as ExportData;
-
-        // Validate the imported data
-        if (!data.boulders || !Array.isArray(data.boulders)) {
-          throw new Error('Invalid import file format');
-        }
-
-        resolve(data.boulders);
-      } catch (error) {
-        reject(new Error('Failed to parse import file'));
-      }
-    };
-
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-
-    reader.readAsText(file);
-  });
-}
-
-/**
- * Clear all boulders from Firebase
- */
-export async function clearBoulders(): Promise<void> {
-  try {
-    const querySnapshot = await getDocs(collection(db, BOULDERS_COLLECTION));
-    const promises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(promises);
-  } catch (error) {
-    console.error('Failed to clear boulders from Firebase:', error);
-    throw new Error('Failed to clear boulders. Check your connection.');
   }
 }
