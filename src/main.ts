@@ -33,7 +33,8 @@ let currentUser: User | null = null;
 let currentHoldType: 'start' | 'feet-only' | 'middle' | 'top' | null = null;
 let currentRating: 1 | 2 | 3 | null = null;
 let currentTags: Set<string> = new Set();
-let sortMode: 'grade' | 'stars' = 'grade';
+let gradeFilter: string | null = null;
+let starsFilter: 1 | 2 | 3 | null = null;
 
 let activeBoard: Board | null = null;
 let allBoards: Board[] = [];
@@ -52,6 +53,7 @@ function isViewingLatest(): boolean {
 }
 
 const AVAILABLE_TAGS = ['Crimps', 'Slopers', 'Pinches', 'Underclings', 'Pockets', 'Dyno', 'Technical'];
+const GRADES = ['5a', '5a+', '5b', '5b+', '5c', '5c+', '6a', '6a+', '6b', '6b+', '6c', '6c+', '7a', '7a+', '7b', '7b+', '7c', '7c+'];
 const NAME_MAX_LENGTH = 100;
 const DESCRIPTION_MAX_LENGTH = 250;
 
@@ -127,9 +129,7 @@ function renderHTML(): void {
             class="w-full px-3 py-2 mb-2 bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 invalid:text-gray-400"
           >
             <option value="" disabled selected>Grade</option>
-            ${['5a', '5a+', '5b', '5b+', '5c', '5c+', '6a', '6a+', '6b', '6b+', '6c', '6c+', '7a', '7a+', '7b', '7b+', '7c', '7c+']
-              .map(g => `<option value="${g}">${g}</option>`)
-              .join('')}
+            ${GRADES.map(g => `<option value="${g}">${g}</option>`).join('')}
           </select>
           <div class="mb-2">
             <div id="boulder-rating" class="flex gap-1">
@@ -207,11 +207,17 @@ function renderHTML(): void {
               ` : ''}
             </h2>
           </div>
-          <div class="mb-3">
-            <div id="boulder-sort" class="inline-flex bg-gray-700 rounded text-xs overflow-hidden">
-              <button data-sort="grade" class="px-2 py-1" title="Sort by grade (hardest first)">Grade</button>
-              <button data-sort="stars" class="px-2 py-1" title="Sort by stars (best first)">Stars</button>
-            </div>
+          <div class="mb-3 flex gap-2 text-xs">
+            <select id="filter-grade" class="bg-gray-700 text-gray-300 rounded px-2 py-1 outline-none cursor-pointer" title="Filter by grade">
+              <option value="" ${gradeFilter === null ? 'selected' : ''}>By Grade</option>
+              ${GRADES.map(g => `<option value="${g}" ${gradeFilter === g ? 'selected' : ''}>${g}</option>`).join('')}
+            </select>
+            <select id="filter-stars" class="bg-gray-700 text-gray-300 rounded px-2 py-1 outline-none cursor-pointer" title="Filter by stars">
+              <option value="" ${starsFilter === null ? 'selected' : ''}>By Stars</option>
+              <option value="1" ${starsFilter === 1 ? 'selected' : ''}>★</option>
+              <option value="2" ${starsFilter === 2 ? 'selected' : ''}>★★</option>
+              <option value="3" ${starsFilter === 3 ? 'selected' : ''}>★★★</option>
+            </select>
           </div>
           <div id="boulder-list" class="space-y-2">
             <!-- Boulder items will be inserted here -->
@@ -643,27 +649,32 @@ function renderBoulderList(): void {
 
   if (!listContainer) return;
 
+  const filtered = state.boulders.filter((b) => {
+    if (gradeFilter !== null && b.grade !== gradeFilter) return false;
+    if (starsFilter !== null && b.rating !== starsFilter) return false;
+    return true;
+  });
+
   if (countEl) {
-    countEl.textContent = state.boulders.length.toString();
+    countEl.textContent = filtered.length.toString();
   }
 
   if (state.boulders.length === 0) {
     listContainer.innerHTML = '<p class="text-gray-500 text-sm">No boulders saved yet.</p>';
     return;
   }
+  if (filtered.length === 0) {
+    listContainer.innerHTML = '<p class="text-gray-500 text-sm">No boulders match the active filters.</p>';
+    return;
+  }
 
   const readOnly = !isViewingLatest();
-  listContainer.innerHTML = [...state.boulders]
+  listContainer.innerHTML = [...filtered]
     .sort((a, b) => {
       const gradeDiff = (b.grade ?? '').localeCompare(a.grade ?? '');
       const ratingDiff = (b.rating ?? 0) - (a.rating ?? 0);
-      if (sortMode === 'grade') {
-        if (gradeDiff !== 0) return gradeDiff;
-        if (ratingDiff !== 0) return ratingDiff;
-      } else {
-        if (ratingDiff !== 0) return ratingDiff;
-        if (gradeDiff !== 0) return gradeDiff;
-      }
+      if (gradeDiff !== 0) return gradeDiff;
+      if (ratingDiff !== 0) return ratingDiff;
       return b.createdAt - a.createdAt;
     })
     .map((boulder) => {
@@ -972,18 +983,6 @@ function updateTagButtons(): void {
 }
 
 /**
- * Update sort toggle button visual states
- */
-function updateSortButtons(): void {
-  document.querySelectorAll<HTMLButtonElement>('#boulder-sort [data-sort]').forEach(btn => {
-    const active = btn.dataset.sort === sortMode;
-    btn.classList.toggle('bg-blue-600', active);
-    btn.classList.toggle('text-white', active);
-    btn.classList.toggle('text-gray-300', !active);
-  });
-}
-
-/**
  * Set up event listeners
  */
 function setupEventListeners(): void {
@@ -1058,18 +1057,17 @@ function setupEventListeners(): void {
 
   updateTagButtons();
 
-  // Sort toggle (event delegation)
-  document.querySelector('#boulder-sort')?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('[data-sort]') as HTMLElement | null;
-    if (!btn) return;
-    const mode = btn.dataset.sort as 'grade' | 'stars';
-    if (mode === sortMode) return;
-    sortMode = mode;
-    updateSortButtons();
+  // Filter dropdowns
+  document.querySelector('#filter-grade')?.addEventListener('change', (e) => {
+    const val = (e.target as HTMLSelectElement).value;
+    gradeFilter = val === '' ? null : val;
     renderBoulderList();
   });
-
-  updateSortButtons();
+  document.querySelector('#filter-stars')?.addEventListener('change', (e) => {
+    const val = (e.target as HTMLSelectElement).value;
+    starsFilter = val === '' ? null : (Number(val) as 1 | 2 | 3);
+    renderBoulderList();
+  });
 
   // Listen to panzoom events to detect actual panning
   const container = document.querySelector('#panzoom-container');
