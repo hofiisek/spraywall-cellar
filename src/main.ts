@@ -10,7 +10,7 @@ import {
   saveBoulder,
   subscribeToBoulders,
   deleteBoulderFromFirebase,
-  subscribeToLatestBoard,
+  subscribeToAllBoards,
 } from './storage';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
@@ -36,11 +36,19 @@ let currentTags: Set<string> = new Set();
 let sortMode: 'grade' | 'stars' = 'grade';
 
 let activeBoard: Board | null = null;
+let allBoards: Board[] = [];
+let latestBoardId: string | null = null;
 let boardUnsub: (() => void) | null = null;
 let bouldersUnsub: (() => void) | null = null;
 
+const READ_ONLY_TOOLTIP = 'Historical board is read-only. Switch to the current board to make changes.';
+
 function isAdmin(): boolean {
   return currentUser?.email === ADMIN_EMAIL;
+}
+
+function isViewingLatest(): boolean {
+  return !!activeBoard && activeBoard.id === latestBoardId;
 }
 
 const AVAILABLE_TAGS = ['Crimps', 'Slopers', 'Pinches', 'Underclings', 'Pockets', 'Dyno', 'Technical'];
@@ -55,7 +63,7 @@ const DESCRIPTION_MAX_LENGTH = 250;
  * Generate a unique ID
  */
 function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
@@ -95,7 +103,7 @@ function renderHTML(): void {
 
         <!-- Mode Switcher -->
         <div class="flex gap-2 mb-4 md:mb-6 p-1 bg-gray-700 rounded-lg">
-          <button id="mode-set" class="flex-1 px-3 py-3 md:py-2 rounded font-medium transition-colors text-sm md:text-base">
+          <button id="mode-set" class="flex-1 px-3 py-3 md:py-2 rounded font-medium transition-colors text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed">
             Set boulders
           </button>
           <button id="mode-climb" class="flex-1 px-3 py-3 md:py-2 rounded font-medium transition-colors text-sm md:text-base">
@@ -179,10 +187,16 @@ function renderHTML(): void {
 
         <!-- Boulder List -->
         <div id="climb-mode-content" class="flex-1 overflow-y-auto">
-          <div class="flex justify-between items-center mb-3 gap-2">
+          <div class="mb-2">
             <h2 class="inline-flex items-center gap-1 bg-gray-700 rounded px-2 py-1 text-xs font-semibold text-gray-300">
               <span>Board:</span>
-              <span id="board-version-label" class="font-normal">${activeBoard ? activeBoard.version : '—'}</span>
+              ${isAdmin() ? `
+                <select id="board-version-select" class="bg-gray-700 text-gray-300 font-normal cursor-pointer outline-none">
+                  <!-- populated by renderBoardSelector() -->
+                </select>
+              ` : `
+                <span id="board-version-label" class="font-normal">${activeBoard ? activeBoard.version : '—'}</span>
+              `}
               <span class="font-normal text-gray-500">(<span id="boulder-count">0</span>)</span>
               ${isAdmin() ? `
               <button id="btn-recalibrate" class="ml-1 p-0.5 text-purple-300 hover:text-purple-200 active:text-purple-100" title="Upload new photo & recalibrate">
@@ -192,11 +206,11 @@ function renderHTML(): void {
               </button>
               ` : ''}
             </h2>
-            <div class="flex items-center gap-2">
-              <div id="boulder-sort" class="flex bg-gray-700 rounded text-xs overflow-hidden">
-                <button data-sort="grade" class="px-2 py-1" title="Sort by grade (hardest first)">Grade</button>
-                <button data-sort="stars" class="px-2 py-1" title="Sort by stars (best first)">Stars</button>
-              </div>
+          </div>
+          <div class="mb-3">
+            <div id="boulder-sort" class="inline-flex bg-gray-700 rounded text-xs overflow-hidden">
+              <button data-sort="grade" class="px-2 py-1" title="Sort by grade (hardest first)">Grade</button>
+              <button data-sort="stars" class="px-2 py-1" title="Sort by stars (best first)">Stars</button>
             </div>
           </div>
           <div id="boulder-list" class="space-y-2">
@@ -422,13 +436,16 @@ function updateModeUI(): void {
 
   if (!setModeBtn || !climbModeBtn || !setModeContent || !climbModeContent) return;
 
+  // disabled: utilities have to be on the className we set here, otherwise
+  // they get clobbered by the rewrite below.
+  const setModeDisabled = 'disabled:opacity-50 disabled:cursor-not-allowed';
   if (state.mode === 'set') {
-    setModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors bg-blue-600 text-white';
+    setModeBtn.className = `flex-1 px-3 py-2 rounded font-medium transition-colors bg-blue-600 text-white ${setModeDisabled}`;
     climbModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors text-gray-300 hover:text-white';
     setModeContent.style.display = 'block';
     climbModeContent.style.display = 'none';
   } else {
-    setModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors text-gray-300 hover:text-white';
+    setModeBtn.className = `flex-1 px-3 py-2 rounded font-medium transition-colors text-gray-300 hover:text-white ${setModeDisabled}`;
     climbModeBtn.className = 'flex-1 px-3 py-2 rounded font-medium transition-colors bg-blue-600 text-white';
     setModeContent.style.display = 'none';
     climbModeContent.style.display = 'block';
@@ -480,6 +497,10 @@ function switchMode(mode: 'set' | 'climb'): void {
 async function saveCurrentBoulder(): Promise<void> {
   if (!currentUser) {
     alert('Please login to save boulders.');
+    return;
+  }
+  if (!isViewingLatest()) {
+    alert(READ_ONLY_TOOLTIP);
     return;
   }
 
@@ -631,6 +652,7 @@ function renderBoulderList(): void {
     return;
   }
 
+  const readOnly = !isViewingLatest();
   listContainer.innerHTML = [...state.boulders]
     .sort((a, b) => {
       const gradeDiff = (b.grade ?? '').localeCompare(a.grade ?? '');
@@ -646,6 +668,12 @@ function renderBoulderList(): void {
     })
     .map((boulder) => {
       const isSelected = state.selectedBoulderId === boulder.id;
+      const lockDisabled = readOnly;
+      const editDisabled = readOnly || !!boulder.isLocked;
+      const deleteDisabled = readOnly || !!boulder.isLocked;
+      const lockTitle = readOnly ? READ_ONLY_TOOLTIP : boulder.isLocked ? 'Locked' : 'Unlocked';
+      const editTitle = readOnly ? READ_ONLY_TOOLTIP : 'Edit boulder';
+      const deleteTitle = readOnly ? READ_ONLY_TOOLTIP : 'Delete boulder';
       return `
         <div
           class="p-4 md:p-3 rounded ${isSelected ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600 active:bg-gray-600'} cursor-pointer"
@@ -670,9 +698,10 @@ function renderBoulderList(): void {
             </div>
             <div class="flex flex-col gap-2 ml-2">
               <button
-                class="${boulder.isLocked ? 'text-yellow-400 hover:text-yellow-300' : 'text-gray-400 hover:text-gray-300'} active:text-gray-200 p-2 -m-2"
+                class="${boulder.isLocked ? 'text-yellow-400 hover:text-yellow-300' : 'text-gray-400 hover:text-gray-300'} active:text-gray-200 p-2 -m-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 data-toggle-lock="${boulder.id}"
-                title="${boulder.isLocked ? 'Locked' : 'Unlocked'}"
+                title="${lockTitle}"
+                ${lockDisabled ? 'disabled' : ''}
               >
                 <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   ${boulder.isLocked
@@ -682,20 +711,20 @@ function renderBoulderList(): void {
                 </svg>
               </button>
               <button
-                class="text-blue-400 hover:text-blue-300 active:text-blue-200 p-2 -m-2 ${boulder.isLocked ? 'opacity-50' : ''}"
+                class="text-blue-400 hover:text-blue-300 active:text-blue-200 p-2 -m-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 data-edit-boulder="${boulder.id}"
-                title="Edit boulder"
-                ${boulder.isLocked ? 'disabled' : ''}
+                title="${editTitle}"
+                ${editDisabled ? 'disabled' : ''}
               >
                 <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </button>
               <button
-                class="text-red-400 hover:text-red-300 active:text-red-200 p-2 -m-2 ${boulder.isLocked ? 'opacity-50' : ''}"
+                class="text-red-400 hover:text-red-300 active:text-red-200 p-2 -m-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 data-delete-boulder="${boulder.id}"
-                title="Delete boulder"
-                ${boulder.isLocked ? 'disabled' : ''}
+                title="${deleteTitle}"
+                ${deleteDisabled ? 'disabled' : ''}
               >
                 <svg class="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -773,8 +802,12 @@ function selectBoulder(boulderId: string): void {
  */
 async function toggleBoulderLock(boulderId: string): Promise<void> {
   // Only admin can lock/unlock boulders
-  if (currentUser?.email !== 'hofiisek@gmail.com') {
+  if (!isAdmin()) {
     alert('Only the admin can lock/unlock boulders.');
+    return;
+  }
+  if (!isViewingLatest()) {
+    alert(READ_ONLY_TOOLTIP);
     return;
   }
 
@@ -811,6 +844,10 @@ async function toggleBoulderLock(boulderId: string): Promise<void> {
 async function editBoulder(boulderId: string): Promise<void> {
   if (!currentUser) {
     alert('Please login to edit boulders.');
+    return;
+  }
+  if (!isViewingLatest()) {
+    alert(READ_ONLY_TOOLTIP);
     return;
   }
 
@@ -858,6 +895,10 @@ async function editBoulder(boulderId: string): Promise<void> {
 async function deleteBoulder(boulderId: string): Promise<void> {
   if (!currentUser) {
     alert('Please login to delete boulders.');
+    return;
+  }
+  if (!isViewingLatest()) {
+    alert(READ_ONLY_TOOLTIP);
     return;
   }
 
@@ -1082,10 +1123,21 @@ function setupEventListeners(): void {
       alert('Wait for the current board to load before recalibrating.');
       return;
     }
+    if (!isViewingLatest()) {
+      alert('Switch to the current board before recalibrating.');
+      return;
+    }
     openRecalibrationModal({
       currentBoard: activeBoard,
       currentBoulders: state.boulders,
     });
+  });
+
+  // Board selector (admin only — element only rendered for admin)
+  document.querySelector('#board-version-select')?.addEventListener('change', (e) => {
+    const id = (e.target as HTMLSelectElement).value;
+    const board = allBoards.find((b) => b.id === id);
+    if (board) applyActiveBoard(board);
   });
 }
 
@@ -1150,6 +1202,54 @@ function applyActiveBoard(board: Board | null): void {
     state.boulders = [];
     renderBoulderList();
   }
+  renderBoardSelector();
+  applyReadOnlyState();
+}
+
+/**
+ * Populate the admin-only board version dropdown with all known boards.
+ * No-op for non-admin sessions (no element exists).
+ */
+function renderBoardSelector(): void {
+  const sel = document.querySelector('#board-version-select') as HTMLSelectElement | null;
+  if (!sel) return;
+  sel.innerHTML = allBoards
+    .map((b) => {
+      const suffix = b.id === latestBoardId ? ' (current)' : ' (legacy)';
+      const selected = b.id === activeBoard?.id ? 'selected' : '';
+      return `<option value="${b.id}" ${selected}>${b.version}${suffix}</option>`;
+    })
+    .join('');
+}
+
+/**
+ * Toggle the read-only UI for non-current boards: greys out Save, the
+ * "Set boulders" tab, and per-boulder action icons; hides the recalibrate icon.
+ */
+function applyReadOnlyState(): void {
+  const readOnly = !isViewingLatest();
+
+  const recalBtn = document.querySelector('#btn-recalibrate') as HTMLElement | null;
+  if (recalBtn) recalBtn.style.display = isAdmin() && !readOnly ? '' : 'none';
+
+  const setModeBtn = document.querySelector('#mode-set') as HTMLButtonElement | null;
+  if (setModeBtn) {
+    setModeBtn.disabled = readOnly;
+    setModeBtn.title = readOnly ? READ_ONLY_TOOLTIP : '';
+  }
+  if (readOnly && state.mode === 'set') {
+    state.mode = 'climb';
+    updateModeUI();
+  }
+
+  const saveBtn = document.querySelector('#btn-save') as HTMLButtonElement | null;
+  if (saveBtn) {
+    saveBtn.disabled = readOnly;
+    saveBtn.title = readOnly ? READ_ONLY_TOOLTIP : '';
+  }
+
+  // Re-render boulder list so per-row lock/edit/delete pick up the new state.
+  renderBoulderList();
 }
 
 /**
@@ -1170,10 +1270,29 @@ async function showApp(): Promise<void> {
   renderHTML();
   renderBoulderList();
 
-  // Subscribe to the latest board — fires immediately with whatever is there,
-  // and again whenever a recalibration creates a new board.
-  boardUnsub = subscribeToLatestBoard((board) => {
-    applyActiveBoard(board);
+  // Subscribe to ALL boards. Auto-switches the active view only on first load
+  // and when a new board appears, so the admin's manual selection in the
+  // dropdown isn't clobbered by routine snapshot ticks.
+  boardUnsub = subscribeToAllBoards((boards, latest) => {
+    allBoards = boards;
+    const newLatestId = latest?.id ?? null;
+    const isFirstLoad = latestBoardId === null;
+    const latestChanged = newLatestId !== latestBoardId;
+    // Non-admins (and signed-out users) can only ever view the latest board.
+    // If they somehow land on a historical board (e.g. an admin logged out
+    // while viewing one), snap them back to current.
+    const mustForceLatest = !isAdmin() && activeBoard?.id !== newLatestId;
+    latestBoardId = newLatestId;
+
+    if (isFirstLoad || latestChanged || mustForceLatest) {
+      applyActiveBoard(latest);
+    } else {
+      // Active board may have been edited externally — refresh in-memory copy.
+      const refreshed = boards.find((b) => b.id === activeBoard?.id) ?? null;
+      if (refreshed) activeBoard = refreshed;
+      renderBoardSelector();
+      applyReadOnlyState();
+    }
   });
 
   // Initialize panzoom

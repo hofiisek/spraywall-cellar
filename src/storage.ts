@@ -8,7 +8,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  limit,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -28,40 +27,31 @@ export function formatBoardVersion(d: Date = new Date()): string {
 }
 
 /**
- * Query the top-N boards by version. We do the createdAt tiebreaker
- * client-side to avoid requiring a Firestore composite index.
+ * Subscribe to ALL boards. Fires immediately with the current set and again
+ * on any board create / update / delete. The callback receives:
+ *   - the sorted list (newest first, version → createdAt tiebreaker)
+ *   - the latest board (or null if there are none)
+ *
+ * Single-field orderBy on `version` keeps Firestore happy (no composite index).
+ * The "vYYYYMMDD" string sorts lexicographically the same as chronologically;
+ * the createdAt tiebreaker for same-day boards is applied client-side.
  */
-function topBoardsQuery() {
-  return query(collection(db, BOARDS_COLLECTION), orderBy('version', 'desc'), limit(10));
-}
-
-/**
- * Pick the "latest" board from a candidate list: highest version, then
- * highest createdAt as a tiebreaker. The fixed-width "vYYYYMMDD" string
- * sorts lexicographically the same as chronologically.
- */
-function pickLatest(boards: Board[]): Board | null {
-  if (boards.length === 0) return null;
-  return [...boards].sort((a, b) => {
-    if (a.version !== b.version) return a.version < b.version ? 1 : -1;
-    return b.createdAt - a.createdAt;
-  })[0];
-}
-
-/**
- * Subscribe to the latest board. Fires immediately with the current latest
- * and again whenever a newer board (higher version, then higher createdAt) is added.
- */
-export function subscribeToLatestBoard(callback: (board: Board | null) => void): () => void {
-  const q = topBoardsQuery();
+export function subscribeToAllBoards(
+  callback: (boards: Board[], latest: Board | null) => void,
+): () => void {
+  const q = query(collection(db, BOARDS_COLLECTION), orderBy('version', 'desc'));
   return onSnapshot(
     q,
     (snap) => {
       const boards = snap.docs.map((d) => d.data() as Board);
-      callback(pickLatest(boards));
+      boards.sort((a, b) => {
+        if (a.version !== b.version) return a.version < b.version ? 1 : -1;
+        return b.createdAt - a.createdAt;
+      });
+      callback(boards, boards[0] ?? null);
     },
     (error) => {
-      console.error('Error subscribing to latest board:', error);
+      console.error('Error subscribing to boards:', error);
     },
   );
 }
